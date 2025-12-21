@@ -1,10 +1,10 @@
 # Fire-Flow
 
-Fire-Flow is a workflow orchestration service built with Go 1.23+ and Kestra.
+Fire-Flow is a workflow orchestration service built with Go 1.24+ and Kestra.
 
 ## Prerequisites
 
-- Go 1.23 or higher
+- Go 1.24 or higher
 - Docker and Docker Compose
 - Task (go-task) - Install from https://taskfile.dev/
   ```bash
