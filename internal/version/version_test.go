@@ -5,7 +5,7 @@ import "testing"
 func TestInfo(t *testing.T) {
 	expected := "Fire-Flow v0.1.0"
 	actual := Info()
-	
+
 	if actual != expected {
 		t.Errorf("Info() = %q, want %q", actual, expected)
 	}
