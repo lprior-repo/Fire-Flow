@@ -1,5 +1,9 @@
 package main
 
+import (
+	"path/filepath"
+)
+
 // TCR Enforcer configuration paths and constants
 const (
 	// OpenCodeDir is the root directory for TCR configuration and state
@@ -19,10 +23,10 @@ func GetTCRPath() string {
 
 // GetConfigPath returns the full path to the config file
 func GetConfigPath() string {
-	return GetTCRPath() + "/" + ConfigFileName
+	return filepath.Join(GetTCRPath(), ConfigFileName)
 }
 
 // GetStatePath returns the full path to the state file
 func GetStatePath() string {
-	return GetTCRPath() + "/" + StateFileName
+	return filepath.Join(GetTCRPath(), StateFileName)
 }

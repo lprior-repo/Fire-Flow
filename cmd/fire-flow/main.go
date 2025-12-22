@@ -523,6 +523,7 @@ func (cmd *StatusCommand) Execute() error {
 	return nil
 }
 
+
 // getStateName returns a human-readable state name
 func getStateName(state *state.State) string {
 	if state.IsRed() {

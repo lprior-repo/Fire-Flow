@@ -76,3 +76,13 @@ func (s *State) IsRed() bool {
 func (s *State) IsGreen() bool {
 	return len(s.FailingTests) == 0
 }
+
+// SetRed sets the state to red (failing tests)
+func (s *State) SetRed() {
+	s.FailingTests = []string{"TestExample"}
+}
+
+// SetGreen sets the state to green (no failing tests)
+func (s *State) SetGreen() {
+	s.FailingTests = []string{}
+}

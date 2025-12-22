@@ -1,0 +1,56 @@
+id: tcr-enforcement-workflow
+namespace: fire.flow
+
+description: |
+  Kestra workflow that orchestrates the TCR (Test-Driven Code Review) enforcement process.
+  This workflow integrates with the TCR enforcer CLI to enforce TDD principles.
+
+inputs:
+  - id: file_path
+    type: STRING
+    description: Path to the file being changed
+
+tasks:
+  - id: status
+    type: io.kestra.core.tasks.log.Log
+    message: "Checking current TCR state for file: {{ inputs.file_path }}"
+
+  - id: tdd-gate
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Run TDD gate check
+    commands:
+      - cd /home/lewis/src/Fire-Flow && ./bin/fire-flow tdd-gate --file {{ inputs.file_path }}
+    output: true
+
+  - id: decision
+    type: io.kestra.core.tasks.log.Log
+    message: "TDD Gate decision: {{ outputs.tdd-gate.exitCode }}"
+    condition: "{{ outputs.tdd-gate.exitCode == 0 }}"
+
+  - id: run-tests
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Run tests if TDD gate allows
+    commands:
+      - cd /home/lewis/src/Fire-Flow && ./bin/fire-flow run-tests
+    output: true
+    condition: "{{ outputs.tdd-gate.exitCode == 0 }}"
+
+  - id: commit
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Commit if tests pass
+    commands:
+      - cd /home/lewis/src/Fire-Flow && ./bin/fire-flow commit --message "TCR: Auto-commit from workflow"
+    output: true
+    condition: "{{ outputs.run-tests.exitCode == 0 }}"
+
+  - id: revert
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Revert if tests fail
+    commands:
+      - cd /home/lewis/src/Fire-Flow && ./bin/fire-flow revert
+    output: true
+    condition: "{{ outputs.run-tests.exitCode != 0 }}"
+
+  - id: result
+    type: io.kestra.core.tasks.log.Log
+    message: "TCR workflow completed with result: {{ outputs.commit.exitCode }}"
