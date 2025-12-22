@@ -38,6 +38,10 @@ func main() {
 		handleCommitCommand()
 	case "revert":
 		handleRevertCommand()
+	case "init":
+		handleInitCommand()
+	case "status":
+		handleStatusCommand()
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printUsage()
@@ -48,6 +52,8 @@ func main() {
 func printUsage() {
 	fmt.Println("Usage: fire-flow <command> [args]")
 	fmt.Println("Available commands:")
+	fmt.Println("  init")
+	fmt.Println("  status")
 	fmt.Println("  tdd-gate --file <path>")
 	fmt.Println("  run-tests [--json]")
 	fmt.Println("  commit --message \"commit message\"")
@@ -113,6 +119,24 @@ func handleRevertCommand() {
 	}
 }
 
+func handleStatusCommand() {
+	// Create and execute Status command
+	cmd := &StatusCommand{}
+	if err := cmd.Execute(); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func handleInitCommand() {
+	// Create and execute Init command
+	cmd := &InitCommand{}
+	if err := cmd.Execute(); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
 // TDDGateCommand represents the tdd-gate command
 type TDDGateCommand struct {
 	filePath string
@@ -158,17 +182,21 @@ func (cmd *TDDGateCommand) Execute() error {
 	return nil
 }
 
-// isTestFile checks if a file path matches test patterns
+// isTestFile checks if a file path matches test patterns.
+// Patterns can be glob patterns (e.g., "*_test.go") or simple regex-like patterns
+// (e.g., "_test\\.go$"). The function first tries glob matching, then falls back
+// to simple string matching for common test file conventions.
 func isTestFile(filePath string, patterns []string) bool {
+	basename := filepath.Base(filePath)
 	for _, pattern := range patterns {
-		// Simple glob pattern matching
-		if matched, err := filepath.Match(pattern, filepath.Base(filePath)); err == nil && matched {
+		// Try glob pattern matching first
+		if matched, err := filepath.Match(pattern, basename); err == nil && matched {
 			return true
 		}
-		// If it's a regex pattern (like _test\\.go$), we need to handle it differently
+		// For patterns that look like regex (contain backslashes), try simple substring matching
+		// This handles patterns like "_test\\.go$" by checking if file contains "_test.go"
 		if strings.Contains(pattern, "\\") {
-			// For now, we'll check if it's a test file by checking if it contains _test.go
-			if strings.Contains(filepath.Base(filePath), "_test.go") {
+			if strings.Contains(basename, "_test.go") {
 				return true
 			}
 		}
@@ -263,37 +291,49 @@ func runTests(testCommand string, timeoutSeconds int) (*TestResult, error) {
 // extractFailedTests parses test output to extract failed test names
 func extractFailedTests(output string) []string {
 	var failedTests []string
-	
-	// Simple parsing of go test -json output
+
+	// Parse go test -json output
 	lines := strings.Split(output, "\n")
 	for _, line := range lines {
-		if strings.Contains(line, `"Action":"fail"`) {
-			// Extract test name from JSON
-			// This is a simplified version - in practice, you'd parse the JSON properly
-			if strings.Contains(line, `"Test":`) {
-				// Extract test name (this is a placeholder implementation)
-				failedTests = append(failedTests, "unknown_test")
-			}
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		// Parse JSON line for test events
+		var event map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			// Skip lines that aren't valid JSON
+			continue
+		}
+
+		// Check if this is a failure event
+		action, ok := event["Action"].(string)
+		if !ok || action != "fail" {
+			continue
+		}
+
+		// Extract test name if present
+		if testName, ok := event["Test"].(string); ok && testName != "" {
+			failedTests = append(failedTests, testName)
 		}
 	}
-	
+
 	return failedTests
 }
 
 // updateState updates the state based on test results
 func updateState(result *TestResult) error {
 	// Load state
-	state, err := loadState()
+	st, err := loadState()
 	if err != nil {
 		return err
 	}
 
 	// Update failing tests
-	state.SetFailingTests(result.FailedTests)
+	st.SetFailingTests(result.FailedTests)
 
 	// Save updated state
-	statePath := filepath.Join(".opencode", "tcr", "state.json")
-	return state.SaveToFile(statePath)
+	return st.SaveToFile(GetStatePath())
 }
 
 // GitOpsCommand represents Git operations commands
@@ -372,46 +412,121 @@ func (cmd *GitOpsCommand) revert() error {
 // updateStateCommit updates state after a successful commit
 func updateStateCommit() error {
 	// Load state
-	state, err := loadState()
+	st, err := loadState()
 	if err != nil {
 		return err
 	}
 
 	// Reset revert streak
-	state.ResetRevertStreak()
+	st.ResetRevertStreak()
 
 	// Update last commit time
-	state.LastCommitTime = time.Now()
+	st.LastCommitTime = time.Now()
 
 	// Save updated state
-	statePath := filepath.Join(".opencode", "tcr", "state.json")
-	return state.SaveToFile(statePath)
+	return st.SaveToFile(GetStatePath())
 }
 
 // updateStateRevert updates state after a revert
 func updateStateRevert() error {
 	// Load state
-	state, err := loadState()
+	st, err := loadState()
 	if err != nil {
 		return err
 	}
 
 	// Increment revert streak
-	state.IncrementRevertStreak()
+	st.IncrementRevertStreak()
 
 	// Save updated state
-	statePath := filepath.Join(".opencode", "tcr", "state.json")
-	return state.SaveToFile(statePath)
+	return st.SaveToFile(GetStatePath())
 }
 
 // loadConfig loads configuration from the default location
 func loadConfig() (*config.Config, error) {
-	configPath := filepath.Join(".opencode", "tcr", "config.yml")
-	return config.LoadFromFile(configPath)
+	return config.LoadFromFile(GetConfigPath())
 }
 
 // loadState loads state from the default location
 func loadState() (*state.State, error) {
-	statePath := filepath.Join(".opencode", "tcr", "state.json")
-	return state.LoadStateFromFile(statePath)
+	st, err := state.LoadStateFromFile(GetStatePath())
+	if err != nil {
+		return nil, err
+	}
+
+	// Ensure the failingTests array is properly initialized
+	if st.FailingTests == nil {
+		st.FailingTests = []string{}
+	}
+
+	return st, nil
+}
+
+// InitCommand represents the init command
+type InitCommand struct{}
+
+// Execute runs the init command to set up TCR environment
+func (cmd *InitCommand) Execute() error {
+	// Create directories
+	tcrPath := GetTCRPath()
+	if err := os.MkdirAll(tcrPath, 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", tcrPath, err)
+	}
+
+	// Create default config file
+	configPath := GetConfigPath()
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		// Create default config
+		cfg := config.DefaultConfig()
+		if err := cfg.SaveToFile(configPath); err != nil {
+			return fmt.Errorf("failed to create default config: %w", err)
+		}
+		log.Printf("Created default config at %s", configPath)
+	} else {
+		log.Printf("Config file already exists at %s", configPath)
+	}
+
+	// Create default state file
+	statePath := GetStatePath()
+	if _, err := os.Stat(statePath); os.IsNotExist(err) {
+		// Create default state
+		st := state.NewState()
+		if err := st.SaveToFile(statePath); err != nil {
+			return fmt.Errorf("failed to create default state: %w", err)
+		}
+		log.Printf("Created default state at %s", statePath)
+	} else {
+		log.Printf("State file already exists at %s", statePath)
+	}
+
+	fmt.Println("TCR Enforcer initialized successfully!")
+	return nil
+}
+
+// StatusCommand represents the status command
+type StatusCommand struct{}
+
+// Execute runs the status command to show current state
+func (cmd *StatusCommand) Execute() error {
+	// Load state
+	state, err := loadState()
+	if err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+
+	// Print status information
+	fmt.Printf("State: %s\n", getStateName(state))
+	fmt.Printf("RevertStreak: %d\n", state.RevertStreak)
+	fmt.Printf("LastCommit: %s\n", state.LastCommitTime.Format(time.RFC3339))
+	fmt.Printf("FailingTests: %v\n", state.FailingTests)
+
+	return nil
+}
+
+// getStateName returns a human-readable state name
+func getStateName(state *state.State) string {
+	if state.IsRed() {
+		return "RED"
+	}
+	return "GREEN"
 }
