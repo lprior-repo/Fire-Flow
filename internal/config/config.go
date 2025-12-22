@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -31,6 +32,7 @@ func DefaultConfig() *Config {
 // LoadFromFile loads configuration from a YAML file.
 // If the file doesn't exist, returns default config with no error.
 func LoadFromFile(filePath string) (*Config, error) {
+	// Load from file
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -43,6 +45,22 @@ func LoadFromFile(filePath string) (*Config, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, err
 	}
+
+	// Override with environment variables if set
+	if testCommand := os.Getenv("TDD_TEST_COMMAND"); testCommand != "" {
+		cfg.TestCommand = testCommand
+	}
+	
+	if timeoutStr := os.Getenv("TDD_TIMEOUT"); timeoutStr != "" {
+		if timeout, err := strconv.Atoi(timeoutStr); err == nil {
+			cfg.Timeout = timeout
+		}
+	}
+	
+	if autoCommitMsg := os.Getenv("TDD_AUTO_COMMIT_MSG"); autoCommitMsg != "" {
+		cfg.AutoCommitMsg = autoCommitMsg
+	}
+
 	return cfg, nil
 }
 
