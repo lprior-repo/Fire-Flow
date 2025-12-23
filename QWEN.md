@@ -14,6 +14,10 @@ As a TDD agent, I'm implementing the Fire-Flow project following the principles 
 - Integration with existing systems through proper unit and integration testing
 - Focus on DAMP (Descriptive and Meaningful Phrases) rather than strict DRY principles in tests
 
+## Kestra Usage
+
+This project is designed to use Kestra locally without Docker. All workflow orchestration is handled through the Fire-Flow binary and local Kestra processes, avoiding Docker dependencies.
+
 ## Beads Requirement
 
 **ABSOLUTE REQUIREMENT: Beads MUST be installed and configured before any development work can begin**
@@ -60,10 +64,10 @@ The new architecture enforces TDD at the filesystem level:
 ## Phase 3: CI/AI Integration
 
 ### Implementation Status
-- [ ] Implement `fire-flow gate` command
-- [ ] stdin/stdout protocol for CI pipelines
-- [ ] Integration with OpenCode agent
-- [ ] Kestra workflow integration
+- [x] Implement `fire-flow gate` command
+- [x] stdin/stdout protocol for CI pipelines
+- [x] Integration with OpenCode agent
+- [x] Kestra workflow integration (using local Kestra processes, not Docker)
 
 ## Phase 4: Future Enhancements
 

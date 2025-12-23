@@ -183,15 +183,13 @@ tasks:
     message: "Hello from my workflow!"
 ```
 
+## Local Kestra Usage
+
+This project is designed to use Kestra locally without Docker. All workflow orchestration is handled through the Fire-Flow binary and local Kestra processes.
+
 ## Stopping Services
 
-```bash
-# Stop Kestra and PostgreSQL
-docker-compose down
-
-# Stop and remove volumes (clean slate)
-docker-compose down -v
-```
+Since we're using Kestra locally without Docker, no special stopping commands are needed.
 
 ## License
 
