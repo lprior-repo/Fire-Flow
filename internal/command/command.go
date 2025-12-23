@@ -48,6 +48,8 @@ func (f *CommandFactory) NewCommand(name string) (Command, error) {
 		return &WatchCommand{}, nil
 	case "gate":
 		return &GateCommand{}, nil
+	case "tdd-gate":
+		return &TddGateCommand{}, nil
 	default:
 		return nil, fmt.Errorf("unknown command: %s", name)
 	}
@@ -252,6 +254,29 @@ func (cmd *GateCommand) Execute() error {
 	return nil
 }
 
+// TddGateCommand represents the TDD gate command
+type TddGateCommand struct {
+	BaseCommand
+}
+
+// Execute runs the TDD gate check - blocks implementation when tests pass (GREEN), allows when they fail (RED)
+func (cmd *TddGateCommand) Execute() error {
+	// Load state to check current TDD status
+	state, err := utils.LoadStateWithValidation()
+	if err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+
+	// If tests are currently passing (GREEN state), block implementation
+	if state.IsGreen() {
+		return fmt.Errorf("TDD gate blocked: Tests are currently passing (GREEN state). Implementation is blocked until tests fail (RED state). Run tests to see current state.")
+	}
+
+	// If tests are currently failing (RED state), allow implementation
+	fmt.Println("TDD gate passed: Tests are currently failing (RED state). Implementation is allowed.")
+	return nil
+}
+
 // loadConfig loads configuration using Viper
 func loadConfig() (*config.Config, error) {
 	// Set up Viper configuration
@@ -291,10 +316,10 @@ func loadConfig() (*config.Config, error) {
 
 // TestResult represents the result of test execution
 type TestResult struct {
-	Passed     bool     `json:"passed"`
+	Passed      bool     `json:"passed"`
 	FailedTests []string `json:"failedTests"`
-	Duration   int      `json:"duration"`
-	Output     string   `json:"output"`
+	Duration    int      `json:"duration"`
+	Output      string   `json:"output"`
 }
 
 // runTests executes the test command with timeout
