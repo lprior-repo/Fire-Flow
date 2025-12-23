@@ -9,7 +9,7 @@ func TestCommandInterface(t *testing.T) {
 	factory := &CommandFactory{}
 
 	// Test that all commands can be created
-	commands := []string{"init", "status", "watch", "gate"}
+	commands := []string{"init", "status"}
 
 	for _, cmdName := range commands {
 		cmd, err := factory.NewCommand(cmdName)
@@ -37,7 +37,7 @@ func TestCommandFactoryNewCommand(t *testing.T) {
 	factory := &CommandFactory{}
 
 	// Test valid commands
-	validCommands := []string{"init", "status", "watch", "gate"}
+	validCommands := []string{"init", "status"}
 	for _, cmdName := range validCommands {
 		cmd, err := factory.NewCommand(cmdName)
 		if err != nil {

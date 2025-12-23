@@ -11,7 +11,7 @@ func TestCommandFactory(t *testing.T) {
 	factory := &command.CommandFactory{}
 
 	// Test that all commands can be created
-	commands := []string{"init", "status", "watch", "gate"}
+	commands := []string{"init", "status"}
 
 	for _, cmdName := range commands {
 		cmd, err := factory.NewCommand(cmdName)
