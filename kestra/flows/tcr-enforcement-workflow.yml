@@ -51,6 +51,22 @@ tasks:
     output: true
     condition: "{{ outputs.run-tests.exitCode != 0 }}"
 
-  - id: result
-    type: io.kestra.core.tasks.log.Log
-    message: "TCR workflow completed with result: {{ outputs.commit.exitCode }}"
+  - id: write-result
+    type: io.kestra.core.tasks.files.WriteFile
+    description: Write structured result for OpenCode integration
+    content: |
+      {
+        "action": "{{
+          if(outputs.tdd-gate.exitCode == 0,
+            if(outputs.run-tests.exitCode == 0,
+              'COMMITTED',
+              'REVERTED'
+            ),
+            'BLOCKED'
+          )
+        }}",
+        "reason": "TCR workflow completed for file: {{ inputs.file_path }}",
+        "streak": "{{ outputs.commit.exitCode }}",
+        "output": "File: {{ inputs.file_path }} - TDD Gate: {{ outputs.tdd-gate.exitCode }} - Tests: {{ outputs.run-tests.exitCode }} - Commit: {{ outputs.commit.exitCode }}"
+      }
+    path: "{{ workingDir }}/result.json"

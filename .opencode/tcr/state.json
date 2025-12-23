@@ -1,6 +1,9 @@
 {
   "mode": "both",
-  "revertStreak": 1,
-  "failingTests": [],
-  "lastCommitTime": "2025-12-22T17:05:53.244829608-06:00"
+  "revertStreak": 0,
+  "failingTests": [
+    "TestMain",
+    "TestExample"
+  ],
+  "lastCommitTime": "2025-12-22T17:16:44.165468337-06:00"
 }
