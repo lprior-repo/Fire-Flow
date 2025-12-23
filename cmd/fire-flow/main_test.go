@@ -1,46 +1,25 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/lprior-repo/Fire-Flow/internal/command"
 )
 
-func TestWatchCommand_Execute(t *testing.T) {
-	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "fire-flow-test")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+func TestCommandFactory(t *testing.T) {
+	factory := &command.CommandFactory{}
 
-	// Create a test file in the directory
-	testFile := filepath.Join(tempDir, "test.go")
-	err = os.WriteFile(testFile, []byte("package main\n\nfunc main() {\n}\n"), 0644)
-	assert.NoError(t, err)
+	// Test that all commands can be created
+	commands := []string{"init", "status", "watch", "gate"}
 
-	// Change to the test directory
-	oldDir, err := os.Getwd()
-	assert.NoError(t, err)
-	defer os.Chdir(oldDir)
-	err = os.Chdir(tempDir)
-	assert.NoError(t, err)
+	for _, cmdName := range commands {
+		cmd, err := factory.NewCommand(cmdName)
+		assert.NoError(t, err)
+		assert.NotNil(t, cmd)
+	}
 
-	// Create a mock test file that will pass
-	testFile = filepath.Join(tempDir, "test_test.go")
-	err = os.WriteFile(testFile, []byte(`package main
-
-import "testing"
-
-func TestExample(t *testing.T) {
-	t.Parallel()
-	t.Log("Test passed")
-}`), 0644)
-	assert.NoError(t, err)
-
-	// Test that WatchCommand can be created without error
-	cmd := &WatchCommand{}
-	// We can't actually execute it due to the file watcher complexity
-	// But we can test the structure
-	assert.NotNil(t, cmd)
+	// Test that unknown command returns error
+	_, err := factory.NewCommand("unknown")
+	assert.Error(t, err)
 }
