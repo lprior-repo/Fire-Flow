@@ -11,6 +11,13 @@ The Command interface follows Kent Beck's principles of simplicity and consisten
 3. **Factory Pattern**: Commands are created through a factory for easy extensibility
 4. **Error Handling**: All commands return errors for proper error propagation
 
+## Package Structure
+
+The command package is organized as follows:
+- `command.go`: Contains the Command interface, CommandFactory, and all command implementations
+- `utils.go`: Contains shared utility functions moved from main.go
+- `README.md`: This documentation file
+
 ## Interface Definition
 
 ```go

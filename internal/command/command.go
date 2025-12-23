@@ -13,7 +13,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/lprior-repo/Fire-Flow/internal/config"
 	"github.com/lprior-repo/Fire-Flow/internal/overlay"
-	"github.com/lprior-repo/Fire-Flow/internal/state"
+	"github.com/lprior-repo/Fire-Flow/internal/utils"
 	"github.com/spf13/viper"
 )
 
@@ -61,17 +61,16 @@ type InitCommand struct {
 // Execute runs the init command to set up Fire-Flow environment
 func (cmd *InitCommand) Execute() error {
 	// Create directories
-	tcrPath := GetTCRPath()
+	tcrPath := utils.GetTCRPath()
 	if err := os.MkdirAll(tcrPath, 0755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", tcrPath, err)
 	}
 
 	// Create default config file
-	configPath := GetConfigPath()
+	configPath := utils.GetConfigPath()
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		// Create default config
-		cfg := config.DefaultConfig()
-		if err := cfg.SaveToFile(configPath); err != nil {
+		if err := utils.CreateDefaultConfig(configPath); err != nil {
 			return fmt.Errorf("failed to create default config: %w", err)
 		}
 		fmt.Printf("Created default config at %s\n", configPath)
@@ -80,11 +79,10 @@ func (cmd *InitCommand) Execute() error {
 	}
 
 	// Create default state file
-	statePath := GetStatePath()
+	statePath := utils.GetStatePath()
 	if _, err := os.Stat(statePath); os.IsNotExist(err) {
 		// Create default state
-		st := state.NewState()
-		if err := st.SaveToFile(statePath); err != nil {
+		if err := utils.CreateDefaultState(statePath); err != nil {
 			return fmt.Errorf("failed to create default state: %w", err)
 		}
 		fmt.Printf("Created default state at %s\n", statePath)
@@ -104,15 +102,15 @@ type StatusCommand struct {
 // Execute runs the status command to show current state
 func (cmd *StatusCommand) Execute() error {
 	// Load state
-	state, err := loadState()
+	state, err := utils.LoadStateWithValidation()
 	if err != nil {
 		return fmt.Errorf("failed to load state: %w", err)
 	}
 
 	// Print status information
-	fmt.Printf("State: %s\n", getStateName(state))
+	fmt.Printf("State: %s\n", utils.GetStateName(state))
 	fmt.Printf("RevertStreak: %d\n", state.RevertStreak)
-	fmt.Printf("LastCommit: %s\n", state.LastCommitTime.Format("2006-01-02 15:04:05"))
+	fmt.Printf("LastCommit: %s\n", utils.FormatTime(state.LastCommitTime))
 	fmt.Printf("FailingTests: %v\n", state.FailingTests)
 
 	return nil
@@ -254,47 +252,6 @@ func (cmd *GateCommand) Execute() error {
 	return nil
 }
 
-// Helper functions that were in main.go but need to be moved to this package
-// These are utility functions that were previously in main.go but are needed by commands
-
-// GetTCRPath returns the TCR path
-func GetTCRPath() string {
-	return "/home/lewis/.opencode/tcr"
-}
-
-// GetConfigPath returns the config file path
-func GetConfigPath() string {
-	return GetTCRPath() + "/config.yml"
-}
-
-// GetStatePath returns the state file path
-func GetStatePath() string {
-	return GetTCRPath() + "/state.json"
-}
-
-// loadState loads state from the default location
-func loadState() (*state.State, error) {
-	st, err := state.LoadStateFromFile(GetStatePath())
-	if err != nil {
-		return nil, err
-	}
-
-	// Ensure the failingTests array is properly initialized
-	if st.FailingTests == nil {
-		st.FailingTests = []string{}
-	}
-
-	return st, nil
-}
-
-// getStateName returns a human-readable state name
-func getStateName(state *state.State) string {
-	if state != nil && state.IsRed() {
-		return "RED"
-	}
-	return "GREEN"
-}
-
 // loadConfig loads configuration using Viper
 func loadConfig() (*config.Config, error) {
 	// Set up Viper configuration
@@ -310,7 +267,7 @@ func loadConfig() (*config.Config, error) {
 	// Set config file name and path
 	v.SetConfigName("config")
 	v.SetConfigType("yaml")
-	v.AddConfigPath(GetTCRPath())
+	v.AddConfigPath(utils.GetTCRPath())
 
 	// Try to read config file
 	if err := v.ReadInConfig(); err != nil {
