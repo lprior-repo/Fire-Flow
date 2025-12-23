@@ -1,240 +1,85 @@
 # Fire-Flow
 
-Fire-Flow is a workflow orchestration service built with Go 1.24+ and Kestra.
+A minimalist Test-Driven Development (TDD) workflow tool built with Go.
+
+## What It Does
+
+Fire-Flow helps enforce TDD practices by tracking your test state and managing your development workflow.
 
 ## Prerequisites
 
 - Go 1.24 or higher
-- Docker and Docker Compose
-- Task (go-task) - Install from https://taskfile.dev/
-  ```bash
-  # macOS
-  brew install go-task
 
-  # Linux
-  sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
+## Quick Start
 
-  # Or using Go
-  go install github.com/go-task/task/v3/cmd/task@latest
-  ```
+```bash
+# Build the application
+go build -o fire-flow ./cmd/fire-flow/
+
+# Initialize Fire-Flow in your project
+./fire-flow init
+
+# Check current status
+./fire-flow status
+```
+
+## Commands
+
+- `fire-flow init` - Initialize Fire-Flow state and configuration
+- `fire-flow status` - Show current TDD state (GREEN/RED)
+
+## How It Works
+
+Fire-Flow maintains state in `.fire-flow/` directory:
+- `config.yaml` - Configuration for test commands and patterns
+- `state.json` - Current TDD state (mode, failing tests, etc.)
+
+## Configuration
+
+Default configuration (`.fire-flow/config.yaml`):
+```yaml
+testCommand: "go test -json ./..."
+testPatterns:
+  - "_test\\.go$"
+protectedPaths:
+  - "opencode.json"
+  - ".opencode/tcr"
+timeout: 30
+autoCommitMsg: "WIP"
+```
+
+You can override settings via environment variables:
+- `TDD_TEST_COMMAND` - Override test command
+- `TDD_TIMEOUT` - Override test timeout (seconds)
+- `TDD_AUTO_COMMIT_MSG` - Override auto-commit message
+
+## Development
+
+```bash
+# Build
+go build ./cmd/fire-flow/
+
+# Run tests
+go test ./...
+
+# Run with coverage
+go test -cover ./...
+```
 
 ## Project Structure
 
 ```
 Fire-Flow/
 ├── cmd/
-│   └── fire-flow/       # Main application entry point
-├── internal/            # Private application code
-│   ├── config/         # Configuration management
-│   ├── overlay/        # OverlayFS implementation for TDD enforcement
-│   ├── state/          # State persistence
-│   └── version/        # Version information
-├── kestra/
-│   ├── flows/          # Kestra workflow definitions
-│   └── config/         # Kestra configuration files
-├── Taskfile.yml        # Task automation
-├── go.mod              # Go module definition
-├── kestra-webhook-configuration.md  # Documentation for Kestra webhook setup
-└── opencode-integration-setup.md    # Documentation for OpenCode integration
+│   └── fire-flow/       # Main application
+├── internal/
+│   ├── command/         # Command implementations
+│   ├── config/          # Configuration management
+│   ├── state/           # State persistence
+│   └── version/         # Version information
+├── go.mod
+└── README.md
 ```
-
-## Quick Start
-
-### 1. Build and Run the Go Application
-
-```bash
-# Show available tasks
-task
-
-# Install development tools (optional)
-task install-tools
-
-# Build the application
-task build
-
-# Run the application
-task run
-```
-
-### 2. Start Kestra Orchestrator
-
-```bash
-# Start Kestra and PostgreSQL
-docker-compose up -d
-
-# View logs
-docker-compose logs -f kestra
-
-# Access Kestra UI
-# Open http://localhost:8080 in your browser
-```
-
-### 3. Execute Workflows
-
-Once Kestra is running, you can:
-- Access the Kestra UI at http://localhost:8080
-- View and execute workflows defined in `kestra/flows/`
-- Create new workflows using the Kestra UI or YAML files
-
-## Available Tasks
-
-Run `task` or `task --list` to see all available tasks:
-
-- `task build` - Build the application
-- `task run` - Run the application
-- `task test` - Run tests
-- `task test-coverage` - Run tests with coverage report
-- `task lint` - Run code linters
-- `task tidy` - Tidy and verify Go modules
-- `task clean` - Clean build artifacts
-- `task deps` - Download dependencies
-- `task check` - Run all checks (tidy, lint, test)
-
-## Development
-
-### Building
-
-```bash
-task build
-```
-
-The binary will be created in `./bin/fire-flow`
-
-### Testing
-
-```bash
-# Run all tests
-task test
-
-# Run tests with coverage
-task test-coverage
-
-# Run mutation tests (requires go-mutest)
-task mutation-test
-```
-
-### Linting
-
-```bash
-task lint
-```
-
-## TCR (Test && Commit || Revert) Enforcer
-
-Fire-Flow includes a TDD enforcement tool that implements the Test && Commit || Revert workflow using an overlay filesystem. This provides filesystem-level enforcement of TDD practices:
-
-1. **OverlayFS-based enforcement** - All changes are written to an upper layer (tmpfs), not the real filesystem
-2. **Automatic commit/discard** - Based on test results
-3. **Zero pollution** - No temporary data in project directory
-4. **Filesystem-level protection** - Cannot bypass TDD rules
-
-### Commands
-
-- `fire-flow init` - Initialize Fire-Flow configuration and state
-- `fire-flow status` - Show current TCR state (RED/GREEN) and statistics
-- `fire-flow watch` - Watch for file changes and automatically run tests
-- `fire-flow gate` - Read from stdin and write to stdout for CI integration
-
-### OverlayFS Implementation Details
-
-The overlay filesystem implementation provides:
-
-- **Mounting**: Creates an overlay filesystem with the project directory as the lower layer and a temporary upper layer
-- **File Watching**: Uses fsnotify to monitor file changes in real-time
-- **Test Execution**: Automatically runs tests when file changes are detected
-- **Commit/Discard**: Commits changes to the real filesystem if tests pass, discards them if tests fail
-- **Cleanup**: Properly unmounts the overlay when the process exits
-
-When using `fire-flow watch`, the following occurs:
-1. An overlay mount is created with the current directory as the lower layer
-2. All file changes are written to the upper layer (tmpfs)
-3. When a file is modified, the system detects the change and runs tests
-4. If tests pass, changes are committed to the lower layer (real filesystem)
-5. If tests fail, changes are discarded from the upper layer
-6. The overlay is properly unmounted when the process exits
-
-### Usage Example
-
-```bash
-# Initialize Fire-Flow
-fire-flow init
-
-# Start watching for file changes
-fire-flow watch
-
-# In another terminal, make a change to a source file
-# The system will automatically run tests and either commit or discard the changes
-```
-
-### System Requirements
-
-- Linux with OverlayFS support
-- `sudo` privileges for mounting OverlayFS (required for `fire-flow watch`)
-- Go 1.24+ installed
-
-### Error Handling
-
-The system provides comprehensive error handling for:
-- Overlay mounting failures
-- Test execution errors
-- File watcher errors
-- Cleanup operations
-
-### Configuration
-
-Fire-Flow uses Viper for configuration management. Configuration is stored in `.fire-flow/config.yaml`:
-
-```yaml
-testCommand: "go test -json ./..."        # Command to run tests
-testPatterns:                              # Patterns for identifying test files
-  - "_test\\.go$"
-protectedPaths:                            # Paths that cannot be modified
-  - "opencode.json"
-  - ".fire-flow"
-timeout: 30                                # Test execution timeout in seconds
-autoCommitMsg: "WIP"                       # Default commit message
-```
-
-Viper supports multiple configuration sources including:
-- YAML config file
-- Environment variables
-- Command-line flags
-
-## OpenCode Integration
-
-This project supports integration with OpenCode through Kestra workflows. See the following documentation files for setup instructions:
-
-- [Kestra Webhook Configuration](kestra-webhook-configuration.md)
-- [OpenCode Integration Setup](opencode-integration-setup.md)
-
-## Kestra Workflows
-
-Example workflows are provided in `kestra/flows/`:
-
-- `hello-flow.yml` - Basic hello world workflow
-- `build-and-test.yml` - Build and test the Go application
-
-### Creating New Workflows
-
-Create YAML files in `kestra/flows/` following the Kestra workflow syntax:
-
-```yaml
-id: my-workflow
-namespace: fire.flow
-
-tasks:
-  - id: my-task
-    type: io.kestra.core.tasks.log.Log
-    message: "Hello from my workflow!"
-```
-
-## Local Kestra Usage
-
-This project is designed to use Kestra locally without Docker. All workflow orchestration is handled through the Fire-Flow binary and local Kestra processes.
-
-## Stopping Services
-
-Since we're using Kestra locally without Docker, no special stopping commands are needed.
 
 ## License
 

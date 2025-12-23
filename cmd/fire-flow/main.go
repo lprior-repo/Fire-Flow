@@ -40,10 +40,6 @@ func main() {
 func printUsage() {
 	fmt.Println("Usage: fire-flow <command> [args]")
 	fmt.Println("Available commands:")
-	fmt.Println("  init       - Initialize TCR state")
-	fmt.Println("  status     - Show TCR status")
-	fmt.Println("  tdd-gate   - Run TDD gate check")
-	fmt.Println("  run-tests  - Execute test suite")
-	fmt.Println("  commit     - Commit changes")
-	fmt.Println("  revert     - Revert changes")
+	fmt.Println("  init       - Initialize Fire-Flow state and config")
+	fmt.Println("  status     - Show current TCR state")
 }

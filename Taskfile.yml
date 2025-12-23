@@ -11,22 +11,6 @@ tasks:
     cmds:
       - task --list
 
-  install-tools:
-    desc: Install development tools
-    cmds:
-      - go install golang.org/x/tools/cmd/goimports@latest
-      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-
-  kestra-start:
-    desc: Start Kestra server
-    cmds:
-      - kestra server start
-
-  kestra-version:
-    desc: Show Kestra version
-    cmds:
-      - kestra --version
-
   build:
     desc: Build the application
     cmds:
@@ -61,7 +45,6 @@ tasks:
     cmds:
       - go fmt ./...
       - go vet ./...
-      - golangci-lint run ./... || true
 
   tidy:
     desc: Tidy Go modules
@@ -81,37 +64,8 @@ tasks:
       - go mod download
 
   check:
-    desc: Run all checks (fmt, vet, lint, test)
+    desc: Run all checks (fmt, vet, test)
     cmds:
       - task: tidy
       - task: lint
       - task: test
-
-  mutation-test:
-    desc: Run mutation tests (requires go-mutest)
-    cmds:
-      - echo "Running mutation tests..."
-      - go install github.com/zimmski/go-mutest@latest || echo "go-mutest not available, installing alternative"
-      - go-mutest -config=mutation-test-config.yaml ./...
-
-  mutation-test-concurrent:
-    desc: Run mutation tests with concurrency for faster execution
-    cmds:
-      - echo "Running concurrent mutation tests..."
-      - go install github.com/zimmski/go-mutest@latest || echo "go-mutest not available, installing alternative"
-      - |
-        # Run mutation tests on each package concurrently
-        # This approach uses the -p flag to run tests in parallel
-        go-mutest -config=mutation-test-config.yaml -p=4 ./...
-    silent: false
-
-  mutation-test-report:
-    desc: Generate a comprehensive mutation testing report
-    cmds:
-      - echo "Generating mutation testing report..."
-      - echo "Mutation testing framework is configured in mutation-test-config.yaml"
-      - echo "To run actual mutation tests, install go-mutest and execute:"
-      - echo "  go-mutest -config=mutation-test-config.yaml ./..."
-      - echo "For parallel execution:"
-      - echo "  go-mutest -config=mutation-test-config.yaml -p=4 ./..."
-    silent: false
