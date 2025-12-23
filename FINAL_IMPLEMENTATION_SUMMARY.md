@@ -41,6 +41,8 @@ This document summarizes the implementation of the Fire-Flow TCR (Test && Commit
 
 5. **State Management**: Persistent state management with revert streak tracking and last commit time.
 
+6. **Mutation Testing Support**: Integration with mutation testing tools to evaluate test suite quality.
+
 ## How It Works
 
 1. **Initialization**: Run `fire-flow init` to set up configuration and state directories.
@@ -51,9 +53,11 @@ This document summarizes the implementation of the Fire-Flow TCR (Test && Commit
 
 4. **Test Execution**: Run `fire-flow run-tests` to execute tests and update state.
 
-5. **Git Operations**: 
+5. **Git Operations**:
    - `fire-flow commit` to commit changes (resets revert streak)
    - `fire-flow revert` to revert all changes (increments revert streak)
+
+6. **Mutation Testing**: Run `task mutation-test` to evaluate your test suite quality with mutation testing.
 
 ## OpenCode Integration
 

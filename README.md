@@ -107,6 +107,9 @@ task test
 
 # Run tests with coverage
 task test-coverage
+
+# Run mutation tests (requires go-mutest)
+task mutation-test
 ```
 
 ### Linting

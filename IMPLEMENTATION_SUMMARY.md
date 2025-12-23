@@ -73,3 +73,11 @@ The code changes were successfully implemented but have not been compiled into t
 4. Test the complete TCR workflow with OpenCode integration
 
 The implementation follows the TCR Enforcer Epic specification with all required features implemented, including the missing `init` and `status` commands that were identified through the beads system.
+
+## Mutation Testing Integration
+
+Added support for mutation testing with:
+- Configuration file (mutation-test-config.yaml)
+- Taskfile integration (task mutation-test)
+- Documentation (MUTATION_TESTING.md)
+- Example script (run-mutation-test.sh)

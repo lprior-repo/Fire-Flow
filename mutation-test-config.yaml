@@ -1,0 +1,34 @@
+# Mutation Testing Configuration for Fire-Flow
+# This file defines settings for mutation testing using standard Go tools
+
+# Enable mutation testing
+enabled: true
+
+# Test command to run before mutations
+testCommand: "go test -v ./..."
+
+# Timeout for test execution
+timeout: 30
+
+# Mutators to enable
+mutators:
+  - "arithmetic"
+  - "assignment"
+  - "comparison"
+  - "logical"
+  - "conditional"
+  - "return"
+  - "panic"
+
+# Coverage thresholds
+coverage:
+  # Minimum coverage percentage
+  min: 80
+  # Maximum coverage percentage (for performance)
+  max: 100
+
+# Files to exclude from mutation testing
+exclude:
+  - "main.go" # Main file might not be suitable for mutation testing
+  - "version.go" # Version file is typically stable
+  - "*_test.go" # Test files
