@@ -114,6 +114,7 @@ Thumbs.db
 *.ipr
 
 # Go binaries and build artifacts
+fire-flow
 *.exe
 *.exe~
 *.dll
