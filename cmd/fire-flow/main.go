@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -13,16 +12,24 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/lprior-repo/Fire-Flow/internal/config"
+	"github.com/lprior-repo/Fire-Flow/internal/logging"
 	"github.com/lprior-repo/Fire-Flow/internal/overlay"
 	"github.com/lprior-repo/Fire-Flow/internal/state"
 	"github.com/lprior-repo/Fire-Flow/internal/version"
 	"github.com/spf13/viper"
 )
 
+var logger = logging.NewLogger()
+
+// Command interface defines the contract for all CLI commands
+type Command interface {
+	Execute() error
+}
+
 func main() {
-	log.Printf("%s starting...", version.Info())
+	logger.Info("%s starting...", version.Info())
 	fmt.Printf("Welcome to %s!\n", version.Name)
-	log.Println("Fire-Flow is ready to orchestrate workflows")
+	logger.Info("Fire-Flow is ready to orchestrate workflows")
 
 	// Handle command parsing
 	if len(os.Args) < 2 {
@@ -42,7 +49,7 @@ func main() {
 	case "status":
 		executeCommand(&StatusCommand{}, "status")
 	default:
-		fmt.Printf("Unknown command: %s\n", command)
+		logger.Error("Unknown command: %s", command)
 		printUsage()
 		os.Exit(1)
 	}
@@ -60,7 +67,7 @@ func printUsage() {
 // executeCommand runs a command and handles errors consistently
 func executeCommand(cmd Command, name string) {
 	if err := cmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error in %s command: %v\n", name, err)
+		logger.PrintError(fmt.Errorf("error in %s command: %w", name, err))
 		os.Exit(1)
 	}
 }
@@ -92,7 +99,7 @@ func (cmd *WatchCommand) Execute() error {
 	}
 
 	// Print mount info
-	log.Printf("Overlay mounted at: %s", mount.Config.MergedDir)
+	logger.Info("Overlay mounted at: %s", mount.Config.MergedDir)
 	fmt.Printf("Overlay mounted at: %s\n", mount.Config.MergedDir)
 	fmt.Printf("Lower directory: %s\n", mount.Config.LowerDir)
 	fmt.Printf("Upper directory: %s\n", mount.Config.UpperDir)
@@ -106,7 +113,7 @@ func (cmd *WatchCommand) Execute() error {
 	defer func() {
 		watcher.Close()
 		overlayManager.Unmount(mount)
-		log.Println("Overlay unmounted successfully")
+		logger.Info("Overlay unmounted successfully")
 	}()
 
 	// Set up signal handling for graceful shutdown
@@ -119,8 +126,8 @@ func (cmd *WatchCommand) Execute() error {
 	// Run initial test
 	_, err = runTests(cfg.TestCommand, cfg.Timeout, true)
 	if err != nil {
+		logger.Error("Initial test run failed: %v", err)
 		fmt.Printf("Initial test run failed: %v\n", err)
-		log.Printf("Initial test run failed: %v", err)
 	}
 
 	// Process file changes
@@ -128,31 +135,31 @@ func (cmd *WatchCommand) Execute() error {
 		select {
 		case <-watcher.Events():
 			// Run tests on change
-			log.Println("File change detected, running tests...")
+			logger.Info("File change detected, running tests...")
 			fmt.Println("File change detected, running tests...")
 			_, err := runTests(cfg.TestCommand, cfg.Timeout, false)
 			if err != nil {
+				logger.Error("Tests failed: %v", err)
 				fmt.Printf("Tests failed: %v\n", err)
-				log.Printf("Tests failed: %v", err)
 				// Discard changes if tests fail
 				fmt.Println("Discarding changes...")
-				log.Println("Discarding changes...")
+				logger.Info("Discarding changes...")
 				if err := overlayManager.Discard(mount); err != nil {
-					log.Printf("Error discarding changes: %v", err)
+					logger.Error("Error discarding changes: %v", err)
 				}
 			} else {
 				fmt.Println("Tests passed, committing changes...")
-				log.Println("Tests passed, committing changes...")
+				logger.Info("Tests passed, committing changes...")
 				// Commit changes if tests pass
 				if err := overlayManager.Commit(mount); err != nil {
-					log.Printf("Error committing changes: %v", err)
+					logger.Error("Error committing changes: %v", err)
 				}
 			}
 		case err := <-watcher.Errors():
-			log.Printf("Watcher error: %v", err)
+			logger.Error("Watcher error: %v", err)
 		case <-sigChan:
 			fmt.Println("\nReceived interrupt signal, shutting down...")
-			log.Println("Received interrupt signal, shutting down...")
+			logger.Info("Received interrupt signal, shutting down...")
 			return nil
 		}
 	}
@@ -182,6 +189,7 @@ func (cmd *GateCommand) Execute() error {
 	// Run tests for the files
 	result, err := runTests(cfg.TestCommand, cfg.Timeout, true)
 	if err != nil {
+		logger.Error("Tests failed: %v", err)
 		return fmt.Errorf("tests failed: %w", err)
 	}
 
@@ -243,10 +251,11 @@ func runTests(testCommand string, timeoutSeconds int, isInitial bool) (*TestResu
 
 	// Print test results
 	if isInitial {
-		fmt.Printf("Initial test run completed in %d seconds\n", result.Duration)
+		logger.Info("Initial test run completed in %d seconds", result.Duration)
 		if result.Passed {
 			fmt.Println("All tests passed!")
 		} else {
+			logger.Error("Tests failed: %v", result.FailedTests)
 			fmt.Printf("Tests failed: %v\n", result.FailedTests)
 		}
 	}
@@ -254,6 +263,7 @@ func runTests(testCommand string, timeoutSeconds int, isInitial bool) (*TestResu
 	// If there was an error, also print stderr
 	if err != nil {
 		if errBuf.Len() > 0 {
+			logger.Error("Error output:\n%s", errBuf.String())
 			fmt.Printf("Error output:\n%s\n", errBuf.String())
 		}
 		return result, fmt.Errorf("test execution failed: %w", err)
@@ -314,9 +324,9 @@ func (cmd *InitCommand) Execute() error {
 		if err := cfg.SaveToFile(configPath); err != nil {
 			return fmt.Errorf("failed to create default config: %w", err)
 		}
-		log.Printf("Created default config at %s", configPath)
+		logger.Info("Created default config at %s", configPath)
 	} else {
-		log.Printf("Config file already exists at %s", configPath)
+		logger.Info("Config file already exists at %s", configPath)
 	}
 
 	// Create default state file
@@ -327,9 +337,9 @@ func (cmd *InitCommand) Execute() error {
 		if err := st.SaveToFile(statePath); err != nil {
 			return fmt.Errorf("failed to create default state: %w", err)
 		}
-		log.Printf("Created default state at %s", statePath)
+		logger.Info("Created default state at %s", statePath)
 	} else {
-		log.Printf("State file already exists at %s", statePath)
+		logger.Info("State file already exists at %s", statePath)
 	}
 
 	fmt.Println("Fire-Flow initialized successfully!")
@@ -344,6 +354,7 @@ func (cmd *StatusCommand) Execute() error {
 	// Load state
 	state, err := loadState()
 	if err != nil {
+		logger.Error("Failed to load state: %v", err)
 		return fmt.Errorf("failed to load state: %w", err)
 	}
 
@@ -376,6 +387,7 @@ type FileWatcher struct {
 func NewFileWatcher(dir string) (*FileWatcher, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
+		logger.Error("Failed to create file watcher: %v", err)
 		return nil, err
 	}
 
@@ -383,6 +395,7 @@ func NewFileWatcher(dir string) (*FileWatcher, error) {
 	err = watcher.Add(dir)
 	if err != nil {
 		watcher.Close()
+		logger.Error("Failed to add directory to watcher: %v", err)
 		return nil, err
 	}
 
@@ -419,6 +432,7 @@ func NewFileWatcher(dir string) (*FileWatcher, error) {
 				if !ok {
 					return
 				}
+				logger.Error("File watcher error: %v", err)
 				select {
 				case w.errors <- err:
 				default:
@@ -470,8 +484,10 @@ func loadConfig() (*config.Config, error) {
 	if err := v.ReadInConfig(); err != nil {
 		// If config file doesn't exist, return default config
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			logger.Error("Error reading config file: %v", err)
 			return nil, fmt.Errorf("error reading config file: %w", err)
 		}
+		logger.Info("Config file not found, using defaults")
 	}
 
 	// Create config from viper values
@@ -490,6 +506,7 @@ func loadConfig() (*config.Config, error) {
 func loadState() (*state.State, error) {
 	st, err := state.LoadStateFromFile(GetStatePath())
 	if err != nil {
+		logger.Error("Failed to load state: %v", err)
 		return nil, err
 	}
 
