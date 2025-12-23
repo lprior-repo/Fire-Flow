@@ -34,13 +34,13 @@ func main() {
 
 	switch command {
 	case "watch":
-		handleWatchCommand()
+		executeCommand(&WatchCommand{}, "watch")
 	case "gate":
-		handleGateCommand()
+		executeCommand(&GateCommand{}, "gate")
 	case "init":
-		handleInitCommand()
+		executeCommand(&InitCommand{}, "init")
 	case "status":
-		handleStatusCommand()
+		executeCommand(&StatusCommand{}, "status")
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printUsage()
@@ -57,38 +57,10 @@ func printUsage() {
 	fmt.Println("  gate")
 }
 
-func handleWatchCommand() {
-	// Create and execute Watch command
-	cmd := &WatchCommand{}
+// executeCommand runs a command and handles errors consistently
+func executeCommand(cmd Command, name string) {
 	if err := cmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-}
-
-func handleGateCommand() {
-	// Create and execute Gate command
-	cmd := &GateCommand{}
-	if err := cmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-}
-
-func handleInitCommand() {
-	// Create and execute Init command
-	cmd := &InitCommand{}
-	if err := cmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-}
-
-func handleStatusCommand() {
-	// Create and execute Status command
-	cmd := &StatusCommand{}
-	if err := cmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error in %s command: %v\n", name, err)
 		os.Exit(1)
 	}
 }
@@ -423,7 +395,12 @@ func NewFileWatcher(dir string) (*FileWatcher, error) {
 
 	// Start goroutine to handle fsnotify events
 	go func() {
-		defer watcher.Close()
+		defer func() {
+			// Ensure watcher is closed even if there's an error
+			watcher.Close()
+			close(w.events)
+			close(w.errors)
+		}()
 		for {
 			select {
 			case event, ok := <-watcher.Events:
@@ -466,9 +443,10 @@ func (w *FileWatcher) Errors() <-chan error {
 	return w.errors
 }
 
-// Close closes the file watcher
-func (w *FileWatcher) Close() {
+// Close closes the file watcher and cleans up resources
+func (w *FileWatcher) Close() error {
 	close(w.closed)
+	return nil
 }
 
 // loadConfig loads configuration using Viper
