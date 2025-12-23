@@ -1,6 +1,6 @@
 {
   "mode": "both",
-  "revertStreak": 0,
+  "revertStreak": 1,
   "failingTests": [
     "TestMain",
     "TestExample"

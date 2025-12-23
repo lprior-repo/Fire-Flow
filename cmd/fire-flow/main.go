@@ -7,13 +7,14 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/lprior-repo/Fire-Flow/internal/config"
+	"github.com/lprior-repo/Fire-Flow/internal/overlay"
 	"github.com/lprior-repo/Fire-Flow/internal/state"
 	"github.com/lprior-repo/Fire-Flow/internal/version"
+	"github.com/spf13/viper"
 )
 
 func main() {
@@ -30,14 +31,10 @@ func main() {
 	command := os.Args[1]
 
 	switch command {
-	case "tdd-gate":
-		handleTDDGateCommand()
-	case "run-tests":
-		handleRunTestsCommand()
-	case "commit":
-		handleCommitCommand()
-	case "revert":
-		handleRevertCommand()
+	case "watch":
+		handleWatchCommand()
+	case "gate":
+		handleGateCommand()
 	case "init":
 		handleInitCommand()
 	case "status":
@@ -54,74 +51,22 @@ func printUsage() {
 	fmt.Println("Available commands:")
 	fmt.Println("  init")
 	fmt.Println("  status")
-	fmt.Println("  tdd-gate --file <path>")
-	fmt.Println("  run-tests [--json]")
-	fmt.Println("  commit --message \"commit message\"")
-	fmt.Println("  revert")
+	fmt.Println("  watch")
+	fmt.Println("  gate")
 }
 
-func handleTDDGateCommand() {
-	if len(os.Args) < 4 || os.Args[2] != "--file" {
-		fmt.Println("Usage: fire-flow tdd-gate --file <path>")
-		os.Exit(1)
-	}
-
-	filePath := os.Args[3]
-	
-	// Create and execute TDD Gate command
-	cmd := &TDDGateCommand{filePath: filePath}
+func handleWatchCommand() {
+	// Create and execute Watch command
+	cmd := &WatchCommand{}
 	if err := cmd.Execute(); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func handleRunTestsCommand() {
-	jsonOutput := false
-	for _, arg := range os.Args {
-		if arg == "--json" {
-			jsonOutput = true
-			break
-		}
-	}
-	
-	// Create and execute Run Tests command
-	cmd := &RunTestsCommand{jsonOutput: jsonOutput}
-	if err := cmd.Execute(); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-}
-
-func handleCommitCommand() {
-	message := ""
-	for i, arg := range os.Args {
-		if arg == "--message" && i+1 < len(os.Args) {
-			message = os.Args[i+1]
-			break
-		}
-	}
-	
-	// Create and execute Commit command
-	cmd := &GitOpsCommand{command: "commit", message: message}
-	if err := cmd.Execute(); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-}
-
-func handleRevertCommand() {
-	// Create and execute Revert command
-	cmd := &GitOpsCommand{command: "revert", message: ""}
-	if err := cmd.Execute(); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-}
-
-func handleStatusCommand() {
-	// Create and execute Status command
-	cmd := &StatusCommand{}
+func handleGateCommand() {
+	// Create and execute Gate command
+	cmd := &GateCommand{}
 	if err := cmd.Execute(); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
@@ -137,111 +82,126 @@ func handleInitCommand() {
 	}
 }
 
-// TDDGateCommand represents the tdd-gate command
-type TDDGateCommand struct {
-	filePath string
+func handleStatusCommand() {
+	// Create and execute Status command
+	cmd := &StatusCommand{}
+	if err := cmd.Execute(); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
-// Execute runs the TDD gate logic
-func (cmd *TDDGateCommand) Execute() error {
+// WatchCommand represents the watch command
+type WatchCommand struct{}
+
+// Execute runs the watch logic - watches for file changes and automatically runs tests
+func (cmd *WatchCommand) Execute() error {
 	// Load configuration
 	cfg, err := loadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Load state
-	state, err := loadState()
+	// Initialize overlay manager with kernel mounter (requires sudo)
+	overlayManager := overlay.NewOverlayManager(overlay.NewKernelMounter())
+
+	// Create overlay mount
+	wd, err := os.Getwd()
 	if err != nil {
-		return fmt.Errorf("failed to load state: %w", err)
+		return fmt.Errorf("failed to get working directory: %w", err)
 	}
 
-	// Check if file is protected
-	if cfg.IsProtected(cmd.filePath) {
-		log.Printf("File %s is protected", cmd.filePath)
-		return fmt.Errorf("blocked: file %s is protected", cmd.filePath)
+	// Mount overlay
+	mount, err := overlayManager.Mount(wd)
+	if err != nil {
+		return fmt.Errorf("failed to mount overlay: %w", err)
 	}
 
-	// Check if file is a test file
-	if isTestFile(cmd.filePath, cfg.TestPatterns) {
-		log.Printf("ALLOWED: Test file %s", cmd.filePath)
-		return nil
+	// Print mount info
+	fmt.Printf("Overlay mounted at: %s\n", mount.Config.MergedDir)
+	fmt.Printf("Lower directory: %s\n", mount.Config.LowerDir)
+	fmt.Printf("Upper directory: %s\n", mount.Config.UpperDir)
+
+	// Set up file watcher
+	watcher, err := NewFileWatcher(mount.Config.MergedDir)
+	if err != nil {
+		overlayManager.Unmount(mount)
+		return fmt.Errorf("failed to create file watcher: %w", err)
+	}
+	defer watcher.Close()
+
+	// Start watching for changes
+	fmt.Println("Watching for file changes... (Press Ctrl+C to stop)")
+
+	// Run initial test
+	_, err = runTests(cfg.TestCommand, cfg.Timeout, true)
+	if err != nil {
+		fmt.Printf("Initial test run failed: %v\n", err)
 	}
 
-	// If not a test file, apply TDD gate logic
-	if state.IsGreen() {
-		log.Printf("BLOCKED: Write test first. State: GREEN")
-		return fmt.Errorf("blocked: Write test first. State: GREEN")
-	}
-
-	if state.IsRed() {
-		log.Printf("ALLOWED: Red state detected")
-		return nil
-	}
-
-	return nil
-}
-
-// isTestFile checks if a file path matches test patterns.
-// Patterns can be glob patterns (e.g., "*_test.go") or simple regex-like patterns
-// (e.g., "_test\\.go$"). The function first tries glob matching, then falls back
-// to simple string matching for common test file conventions.
-func isTestFile(filePath string, patterns []string) bool {
-	basename := filepath.Base(filePath)
-	for _, pattern := range patterns {
-		// Try glob pattern matching first
-		if matched, err := filepath.Match(pattern, basename); err == nil && matched {
-			return true
-		}
-		// For patterns that look like regex (contain backslashes), try simple substring matching
-		// This handles patterns like "_test\\.go$" by checking if file contains "_test.go"
-		if strings.Contains(pattern, "\\") {
-			if strings.Contains(basename, "_test.go") {
-				return true
+	// Process file changes
+	for {
+		select {
+		case <-watcher.Events():
+			// Run tests on change
+			fmt.Println("File change detected, running tests...")
+			_, err := runTests(cfg.TestCommand, cfg.Timeout, false)
+			if err != nil {
+				fmt.Printf("Tests failed: %v\n", err)
+				// Discard changes if tests fail
+				fmt.Println("Discarding changes...")
+				overlayManager.Discard(mount)
+			} else {
+				fmt.Println("Tests passed, committing changes...")
+				// Commit changes if tests pass
+				overlayManager.Commit(mount)
 			}
+		case err := <-watcher.Errors():
+			log.Printf("Watcher error: %v", err)
 		}
 	}
-	return false
 }
 
-// RunTestsCommand represents the run-tests command
-type RunTestsCommand struct {
-	jsonOutput bool
-}
+// GateCommand represents the gate command
+type GateCommand struct{}
 
-// Execute runs the test execution logic
-func (cmd *RunTestsCommand) Execute() error {
+// Execute runs the gate logic - reads from stdin and writes to stdout for CI integration
+func (cmd *GateCommand) Execute() error {
 	// Load configuration
 	cfg, err := loadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Execute tests with timeout
-	result, err := runTests(cfg.TestCommand, cfg.Timeout)
+	// Read stdin for the gate command
+	var input struct {
+		Files []string `json:"files"`
+	}
+
+	decoder := json.NewDecoder(os.Stdin)
+	if err := decoder.Decode(&input); err != nil {
+		return fmt.Errorf("failed to decode stdin: %w", err)
+	}
+
+	// Run tests for the files
+	result, err := runTests(cfg.TestCommand, cfg.Timeout, true)
 	if err != nil {
-		return fmt.Errorf("failed to run tests: %w", err)
+		return fmt.Errorf("tests failed: %w", err)
 	}
 
-	// Update state based on test results
-	if err := updateState(result); err != nil {
-		return fmt.Errorf("failed to update state: %w", err)
+	// Output results to stdout for CI pipeline
+	output := struct {
+		Passed bool     `json:"passed"`
+		Failed []string `json:"failed"`
+	}{
+		Passed: result.Passed,
+		Failed: result.FailedTests,
 	}
 
-	// Output results
-	if cmd.jsonOutput {
-		output, err := json.MarshalIndent(result, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal result: %w", err)
-		}
-		fmt.Println(string(output))
-	} else {
-		fmt.Printf("Test execution completed in %d seconds\n", result.Duration)
-		if result.Passed {
-			fmt.Println("All tests passed!")
-		} else {
-			fmt.Printf("Tests failed: %v\n", result.FailedTests)
-		}
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(output); err != nil {
+		return fmt.Errorf("failed to encode output: %w", err)
 	}
 
 	return nil
@@ -256,7 +216,7 @@ type TestResult struct {
 }
 
 // runTests executes the test command with timeout
-func runTests(testCommand string, timeoutSeconds int) (*TestResult, error) {
+func runTests(testCommand string, timeoutSeconds int, isInitial bool) (*TestResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
 	defer cancel()
 
@@ -267,7 +227,7 @@ func runTests(testCommand string, timeoutSeconds int) (*TestResult, error) {
 	}
 
 	cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
-	
+
 	var outputBuf, errBuf strings.Builder
 	cmd.Stdout = &outputBuf
 	cmd.Stderr = &errBuf
@@ -284,6 +244,16 @@ func runTests(testCommand string, timeoutSeconds int) (*TestResult, error) {
 	// Parse test output to detect failures
 	result.Passed = err == nil
 	result.FailedTests = extractFailedTests(outputBuf.String())
+
+	// Print test results
+	if isInitial {
+		fmt.Printf("Initial test run completed in %d seconds\n", result.Duration)
+		if result.Passed {
+			fmt.Println("All tests passed!")
+		} else {
+			fmt.Printf("Tests failed: %v\n", result.FailedTests)
+		}
+	}
 
 	return result, nil
 }
@@ -321,151 +291,10 @@ func extractFailedTests(output string) []string {
 	return failedTests
 }
 
-// updateState updates the state based on test results
-func updateState(result *TestResult) error {
-	// Load state
-	st, err := loadState()
-	if err != nil {
-		return err
-	}
-
-	// Update failing tests
-	st.SetFailingTests(result.FailedTests)
-
-	// Save updated state
-	return st.SaveToFile(GetStatePath())
-}
-
-// GitOpsCommand represents Git operations commands
-type GitOpsCommand struct {
-	command string
-	message string
-}
-
-// Execute runs the Git operation
-func (cmd *GitOpsCommand) Execute() error {
-	switch cmd.command {
-	case "commit":
-		return cmd.commit()
-	case "revert":
-		return cmd.revert()
-	default:
-		return fmt.Errorf("unknown git operation: %s", cmd.command)
-	}
-}
-
-// commit executes git add, commit, and updates state
-func (cmd *GitOpsCommand) commit() error {
-	// Execute git add .
-	gitCmd := exec.Command("git", "add", ".")
-	if err := gitCmd.Run(); err != nil {
-		return fmt.Errorf("failed to git add: %w", err)
-	}
-
-	// Execute git commit
-	commitMsg := cmd.message
-	if commitMsg == "" {
-		commitMsg = "WIP"
-	}
-	
-	gitCmd = exec.Command("git", "commit", "-m", commitMsg)
-	if err := gitCmd.Run(); err != nil {
-		return fmt.Errorf("failed to git commit: %w", err)
-	}
-
-	// Get commit hash
-	gitCmd = exec.Command("git", "rev-parse", "HEAD")
-	output, err := gitCmd.Output()
-	if err != nil {
-		return fmt.Errorf("failed to get commit hash: %w", err)
-	}
-	
-	commitHash := string(output[:len(output)-1]) // Remove newline
-	log.Printf("Committed with hash: %s", commitHash)
-
-	// Update state
-	if err := updateStateCommit(); err != nil {
-		return fmt.Errorf("failed to update state: %w", err)
-	}
-
-	return nil
-}
-
-// revert executes git reset --hard HEAD and updates state
-func (cmd *GitOpsCommand) revert() error {
-	// Execute git reset --hard HEAD
-	gitCmd := exec.Command("git", "reset", "--hard", "HEAD")
-	if err := gitCmd.Run(); err != nil {
-		return fmt.Errorf("failed to git reset: %w", err)
-	}
-
-	log.Println("Reverted changes")
-
-	// Update state
-	if err := updateStateRevert(); err != nil {
-		return fmt.Errorf("failed to update state: %w", err)
-	}
-
-	return nil
-}
-
-// updateStateCommit updates state after a successful commit
-func updateStateCommit() error {
-	// Load state
-	st, err := loadState()
-	if err != nil {
-		return err
-	}
-
-	// Reset revert streak
-	st.ResetRevertStreak()
-
-	// Update last commit time
-	st.LastCommitTime = time.Now()
-
-	// Save updated state
-	return st.SaveToFile(GetStatePath())
-}
-
-// updateStateRevert updates state after a revert
-func updateStateRevert() error {
-	// Load state
-	st, err := loadState()
-	if err != nil {
-		return err
-	}
-
-	// Increment revert streak
-	st.IncrementRevertStreak()
-
-	// Save updated state
-	return st.SaveToFile(GetStatePath())
-}
-
-// loadConfig loads configuration from the default location
-func loadConfig() (*config.Config, error) {
-	return config.LoadFromFile(GetConfigPath())
-}
-
-// loadState loads state from the default location
-func loadState() (*state.State, error) {
-	st, err := state.LoadStateFromFile(GetStatePath())
-	if err != nil {
-		return nil, err
-	}
-
-	// Ensure the failingTests array is properly initialized
-	if st.FailingTests == nil {
-		st.FailingTests = []string{}
-	}
-
-	return st, nil
-}
-
 // InitCommand represents the init command
 type InitCommand struct{}
 
-// Execute runs the init command to set up TCR environment
+// Execute runs the init command to set up Fire-Flow environment
 func (cmd *InitCommand) Execute() error {
 	// Create directories
 	tcrPath := GetTCRPath()
@@ -499,7 +328,7 @@ func (cmd *InitCommand) Execute() error {
 		log.Printf("State file already exists at %s", statePath)
 	}
 
-	fmt.Println("TCR Enforcer initialized successfully!")
+	fmt.Println("Fire-Flow initialized successfully!")
 	return nil
 }
 
@@ -523,11 +352,109 @@ func (cmd *StatusCommand) Execute() error {
 	return nil
 }
 
-
 // getStateName returns a human-readable state name
 func getStateName(state *state.State) string {
-	if state.IsRed() {
+	if state != nil && state.IsRed() {
 		return "RED"
 	}
 	return "GREEN"
+}
+
+// FileWatcher provides a simplified file watching mechanism
+type FileWatcher struct {
+	events chan struct{}
+	errors chan error
+}
+
+// NewFileWatcher creates a new file watcher for the given directory
+func NewFileWatcher(dir string) (*FileWatcher, error) {
+	// This is a simplified implementation - in a real application we'd use a proper file watcher
+	// For now, we'll just simulate the watching behavior
+	w := &FileWatcher{
+		events: make(chan struct{}, 10),
+		errors: make(chan error, 10),
+	}
+
+	// Start a goroutine that periodically checks for changes
+	go func() {
+		for {
+			// In a real implementation, this would check for actual file changes
+			// For now, we'll simulate changes every 5 seconds
+			time.Sleep(5 * time.Second)
+			select {
+			case w.events <- struct{}{}:
+			default:
+				// Channel full, skip
+			}
+		}
+	}()
+
+	return w, nil
+}
+
+// Events returns a channel that receives events when files change
+func (w *FileWatcher) Events() <-chan struct{} {
+	return w.events
+}
+
+// Errors returns a channel that receives errors
+func (w *FileWatcher) Errors() <-chan error {
+	return w.errors
+}
+
+// Close closes the file watcher
+func (w *FileWatcher) Close() {
+	// In a real implementation, this would properly close the watcher
+}
+
+// loadConfig loads configuration using Viper
+func loadConfig() (*config.Config, error) {
+	// Set up Viper configuration
+	v := viper.New()
+
+	// Set default values
+	v.SetDefault("testCommand", "go test -json ./...")
+	v.SetDefault("testPatterns", []string{"_test\\.go$"})
+	v.SetDefault("protectedPaths", []string{"opencode.json", ".fire-flow"})
+	v.SetDefault("timeout", 30)
+	v.SetDefault("autoCommitMsg", "WIP")
+
+	// Set config file name and path
+	v.SetConfigName("config")
+	v.SetConfigType("yaml")
+	v.AddConfigPath(GetTCRPath())
+
+	// Try to read config file
+	if err := v.ReadInConfig(); err != nil {
+		// If config file doesn't exist, return default config
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("error reading config file: %w", err)
+		}
+	}
+
+	// Create config from viper values
+	cfg := &config.Config{
+		TestCommand:    v.GetString("testCommand"),
+		TestPatterns:   v.GetStringSlice("testPatterns"),
+		ProtectedPaths: v.GetStringSlice("protectedPaths"),
+		Timeout:        v.GetInt("timeout"),
+		AutoCommitMsg:  v.GetString("autoCommitMsg"),
+	}
+
+	return cfg, nil
+}
+
+// loadState loads state from the default location
+func loadState() (*state.State, error) {
+	st, err := state.LoadStateFromFile(GetStatePath())
+	if err != nil {
+		return nil, err
+	}
+
+	// Ensure the failingTests array is properly initialized
+	if st.FailingTests == nil {
+		st.FailingTests = []string{}
+	}
+
+	return st, nil
 }

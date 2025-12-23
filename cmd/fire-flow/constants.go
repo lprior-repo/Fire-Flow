@@ -7,18 +7,18 @@ import (
 // TCR Enforcer configuration paths and constants
 const (
 	// OpenCodeDir is the root directory for TCR configuration and state
-	OpenCodeDir = ".opencode"
+	OpenCodeDir = ".fire-flow"
 	// TCRDir is the subdirectory for TCR enforcer files
-	TCRDir = "tcr"
+	TCRDir = ""
 	// ConfigFileName is the name of the TCR configuration file
-	ConfigFileName = "config.yml"
+	ConfigFileName = "config.yaml"
 	// StateFileName is the name of the TCR state file
 	StateFileName = "state.json"
 )
 
 // GetTCRPath returns the full path to the TCR configuration directory
 func GetTCRPath() string {
-	return OpenCodeDir + "/" + TCRDir
+	return filepath.Join(OpenCodeDir, TCRDir)
 }
 
 // GetConfigPath returns the full path to the config file

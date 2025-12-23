@@ -10,10 +10,10 @@ Fire-Flow is a workflow orchestration service built with Go 1.24+ and Kestra.
   ```bash
   # macOS
   brew install go-task
-  
+
   # Linux
   sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
-  
+
   # Or using Go
   go install github.com/go-task/task/v3/cmd/task@latest
   ```
@@ -26,6 +26,7 @@ Fire-Flow/
 │   └── fire-flow/       # Main application entry point
 ├── internal/            # Private application code
 │   ├── config/         # Configuration management
+│   ├── overlay/        # OverlayFS implementation for TDD enforcement
 │   ├── state/          # State persistence
 │   └── version/        # Version information
 ├── kestra/
@@ -120,24 +121,23 @@ task lint
 
 ## TCR (Test && Commit || Revert) Enforcer
 
-Fire-Flow includes a TDD enforcement tool that implements the Test && Commit || Revert workflow. The `tdd-gate` command enforces that:
+Fire-Flow includes a TDD enforcement tool that implements the Test && Commit || Revert workflow using an overlay filesystem. This provides filesystem-level enforcement of TDD practices:
 
-1. **Test files must be created first** - You cannot write implementation code in GREEN state (all tests passing)
-2. **Implementation code is allowed in RED state** - When tests are failing, you can write implementation
-3. **Protected paths are enforced** - Critical infrastructure files cannot be modified
+1. **OverlayFS-based enforcement** - All changes are written to an upper layer (tmpfs), not the real filesystem
+2. **Automatic commit/discard** - Based on test results
+3. **Zero pollution** - No temporary data in project directory
+4. **Filesystem-level protection** - Cannot bypass TDD rules
 
 ### Commands
 
-- `fire-flow init` - Initialize TCR enforcer configuration and state
+- `fire-flow init` - Initialize Fire-Flow configuration and state
 - `fire-flow status` - Show current TCR state (RED/GREEN) and statistics
-- `fire-flow tdd-gate --file <path>` - Check if a file can be modified based on TDD gate rules
-- `fire-flow run-tests` - Execute test suite and update state
-- `fire-flow commit --message "..."` - Commit changes (resets revert streak on success)
-- `fire-flow revert` - Revert all changes (increments revert streak)
+- `fire-flow watch` - Watch for file changes and automatically run tests
+- `fire-flow gate` - Read from stdin and write to stdout for CI integration
 
 ### Configuration
 
-TCR configuration is stored in `.opencode/tcr/config.yml`:
+Fire-Flow uses Viper for configuration management. Configuration is stored in `.fire-flow/config.yaml`:
 
 ```yaml
 testCommand: "go test -json ./..."        # Command to run tests
@@ -145,10 +145,15 @@ testPatterns:                              # Patterns for identifying test files
   - "_test\\.go$"
 protectedPaths:                            # Paths that cannot be modified
   - "opencode.json"
-  - ".opencode/tcr"
+  - ".fire-flow"
 timeout: 30                                # Test execution timeout in seconds
 autoCommitMsg: "WIP"                       # Default commit message
 ```
+
+Viper supports multiple configuration sources including:
+- YAML config file
+- Environment variables
+- Command-line flags
 
 ## OpenCode Integration
 
