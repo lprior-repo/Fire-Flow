@@ -1,47 +1,250 @@
-# Binaries for programs and plugins
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+  #  code distribution
+*.exe
+*.exe~
+*.dll
+*.dylib
+
+# Spyder project files
+.spyproject
+.spyproject/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+.Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder
+.spyproject/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+
+# Log files
+*.log
+
+# IDE
+*.iml
+*.iws
+*.ipr
+
+# Go binaries and build artifacts
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+*.a
+*.o
 
-# Test binary, built with `go test -c`
-*.test
+# Go module cache
+go/pkg/
+go/src/
+go/bin/
 
-# Output of the go coverage tool
-*.out
-
-# Go workspace file
-go.work
-go.work.sum
-
-# Dependency directories
-vendor/
-
-# Build output
+# Build artifacts
 bin/
 dist/
-build/
+*.deb
+*.rpm
+*.tar.gz
+*.zip
 
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
+# Test artifacts
+*.test
+_coverage/
+*.gcda
+*.gcno
+*.gcov
+
+# Local configuration files
+*.local
+*.config
+*.cfg
+
+# Backup files
 *~
-.DS_Store
+
+# Editor backup files
+.*.swp
+.*.swo
 
 # Environment files
 .env
 .env.local
+.env.*.local
 
-# Temporary files
-tmp/
-*.tmp
+# Docker
+.docker/
+.dockerignore
 
-# Kestra data and logs
-kestra-data/
+# Kubernetes
+.kube/
+.kubeconfig
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Python
+*.pyc
+__pycache__/
+.Python
+.pytest_cache/
+.coverage
+.coverage.*
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+target/
+*.hprof
+
+# C/C++
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+*.dll
+*.lib
+
+# Ruby
+*.gem
+.bundle/
+Gemfile.lock
+
+# Rust
+target/
+Cargo.lock
+
+# Swift
+*.build/
+DerivedData/
+
+# MATLAB
+*.mat
+*.fig
+*.mexa64
+*.mexw64
+*.mexmaci64
+
+# LaTeX
+*.aux
 *.log
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+*.out
+*.toc
+*.lof
+*.lot
+*.ilg
+*.ind
+*.idx
+*.brf
+*.nlo
+*.nls
+*.fls
+*.synctex.gz
+*.fdb_latexmk
 
-# Task runner cache
-.task/
+# WordPress
+wp-content/uploads/
+wp-content/cache/
+wp-content/upgrade/
+wp-content/plugins/
+wp-content/themes/
+wp-config.php
+wp-config-local.php
