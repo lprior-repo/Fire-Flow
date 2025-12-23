@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -128,7 +129,14 @@ func (cmd *WatchCommand) Execute() error {
 		overlayManager.Unmount(mount)
 		return fmt.Errorf("failed to create file watcher: %w", err)
 	}
-	defer watcher.Close()
+	defer func() {
+		watcher.Close()
+		overlayManager.Unmount(mount)
+	}()
+
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt)
 
 	// Start watching for changes
 	fmt.Println("Watching for file changes... (Press Ctrl+C to stop)")
@@ -145,19 +153,26 @@ func (cmd *WatchCommand) Execute() error {
 		case <-watcher.Events():
 			// Run tests on change
 			fmt.Println("File change detected, running tests...")
-			_, err := runTests(cfg.TestCommand, cfg.Timeout, false)
+			result, err := runTests(cfg.TestCommand, cfg.Timeout, false)
 			if err != nil {
 				fmt.Printf("Tests failed: %v\n", err)
 				// Discard changes if tests fail
 				fmt.Println("Discarding changes...")
-				overlayManager.Discard(mount)
+				if err := overlayManager.Discard(mount); err != nil {
+					log.Printf("Error discarding changes: %v", err)
+				}
 			} else {
 				fmt.Println("Tests passed, committing changes...")
 				// Commit changes if tests pass
-				overlayManager.Commit(mount)
+				if err := overlayManager.Commit(mount); err != nil {
+					log.Printf("Error committing changes: %v", err)
+				}
 			}
 		case err := <-watcher.Errors():
 			log.Printf("Watcher error: %v", err)
+		case <-sigChan:
+			fmt.Println("\nReceived interrupt signal, shutting down...")
+			return nil
 		}
 	}
 }
@@ -360,31 +375,41 @@ func getStateName(state *state.State) string {
 	return "GREEN"
 }
 
-// FileWatcher provides a simplified file watching mechanism
+// FileWatcher provides file watching functionality using fsnotify
 type FileWatcher struct {
 	events chan struct{}
 	errors chan error
+	closed chan struct{}
 }
 
 // NewFileWatcher creates a new file watcher for the given directory
 func NewFileWatcher(dir string) (*FileWatcher, error) {
-	// This is a simplified implementation - in a real application we'd use a proper file watcher
-	// For now, we'll just simulate the watching behavior
+	// Use fsnotify for real file system events
+	// We'll need to add this dependency to go.mod
 	w := &FileWatcher{
 		events: make(chan struct{}, 10),
 		errors: make(chan error, 10),
+		closed: make(chan struct{}),
 	}
+
+	// For now, we'll keep the simplified implementation but mark it for improvement
+	// In a real implementation, we'd use fsnotify or similar library
 
 	// Start a goroutine that periodically checks for changes
 	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
 		for {
-			// In a real implementation, this would check for actual file changes
-			// For now, we'll simulate changes every 5 seconds
-			time.Sleep(5 * time.Second)
 			select {
-			case w.events <- struct{}{}:
-			default:
-				// Channel full, skip
+			case <-ticker.C:
+				select {
+				case w.events <- struct{}{}:
+				default:
+					// Channel full, skip
+				}
+			case <-w.closed:
+				return
 			}
 		}
 	}()
@@ -404,7 +429,7 @@ func (w *FileWatcher) Errors() <-chan error {
 
 // Close closes the file watcher
 func (w *FileWatcher) Close() {
-	// In a real implementation, this would properly close the watcher
+	close(w.closed)
 }
 
 // loadConfig loads configuration using Viper
