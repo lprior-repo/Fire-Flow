@@ -62,8 +62,8 @@ The TDD Gate enforces that implementation files cannot be written to unless test
 ## Phase 4: OpenCode Integration
 
 ### Implementation Status
-- [ ] Document Kestra webhook configuration
-- [ ] Document OpenCode integration setup
+- [x] Document Kestra webhook configuration
+- [x] Document OpenCode integration setup
 
 ## Phase 5: Testing & Completion
 
@@ -71,6 +71,7 @@ The TDD Gate enforces that implementation files cannot be written to unless test
 - [x] Unit Tests for TDD gate logic
 - [x] Unit Tests for test execution and parsing
 - [x] Unit Tests for state persistence and concurrency
+- [x] Integration testing with all commands
 
 ## TDD Principles Applied
 
