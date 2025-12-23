@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/lprior-repo/Fire-Flow/internal/config"
 	"github.com/lprior-repo/Fire-Flow/internal/overlay"
 	"github.com/lprior-repo/Fire-Flow/internal/state"
@@ -60,7 +61,7 @@ func handleWatchCommand() {
 	// Create and execute Watch command
 	cmd := &WatchCommand{}
 	if err := cmd.Execute(); err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -69,7 +70,7 @@ func handleGateCommand() {
 	// Create and execute Gate command
 	cmd := &GateCommand{}
 	if err := cmd.Execute(); err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -78,7 +79,7 @@ func handleInitCommand() {
 	// Create and execute Init command
 	cmd := &InitCommand{}
 	if err := cmd.Execute(); err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -87,7 +88,7 @@ func handleStatusCommand() {
 	// Create and execute Status command
 	cmd := &StatusCommand{}
 	if err := cmd.Execute(); err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -119,6 +120,7 @@ func (cmd *WatchCommand) Execute() error {
 	}
 
 	// Print mount info
+	log.Printf("Overlay mounted at: %s", mount.Config.MergedDir)
 	fmt.Printf("Overlay mounted at: %s\n", mount.Config.MergedDir)
 	fmt.Printf("Lower directory: %s\n", mount.Config.LowerDir)
 	fmt.Printf("Upper directory: %s\n", mount.Config.UpperDir)
@@ -132,6 +134,7 @@ func (cmd *WatchCommand) Execute() error {
 	defer func() {
 		watcher.Close()
 		overlayManager.Unmount(mount)
+		log.Println("Overlay unmounted successfully")
 	}()
 
 	// Set up signal handling for graceful shutdown
@@ -145,6 +148,7 @@ func (cmd *WatchCommand) Execute() error {
 	_, err = runTests(cfg.TestCommand, cfg.Timeout, true)
 	if err != nil {
 		fmt.Printf("Initial test run failed: %v\n", err)
+		log.Printf("Initial test run failed: %v", err)
 	}
 
 	// Process file changes
@@ -152,17 +156,21 @@ func (cmd *WatchCommand) Execute() error {
 		select {
 		case <-watcher.Events():
 			// Run tests on change
+			log.Println("File change detected, running tests...")
 			fmt.Println("File change detected, running tests...")
-			result, err := runTests(cfg.TestCommand, cfg.Timeout, false)
+			_, err := runTests(cfg.TestCommand, cfg.Timeout, false)
 			if err != nil {
 				fmt.Printf("Tests failed: %v\n", err)
+				log.Printf("Tests failed: %v", err)
 				// Discard changes if tests fail
 				fmt.Println("Discarding changes...")
+				log.Println("Discarding changes...")
 				if err := overlayManager.Discard(mount); err != nil {
 					log.Printf("Error discarding changes: %v", err)
 				}
 			} else {
 				fmt.Println("Tests passed, committing changes...")
+				log.Println("Tests passed, committing changes...")
 				// Commit changes if tests pass
 				if err := overlayManager.Commit(mount); err != nil {
 					log.Printf("Error committing changes: %v", err)
@@ -172,6 +180,7 @@ func (cmd *WatchCommand) Execute() error {
 			log.Printf("Watcher error: %v", err)
 		case <-sigChan:
 			fmt.Println("\nReceived interrupt signal, shutting down...")
+			log.Println("Received interrupt signal, shutting down...")
 			return nil
 		}
 	}
@@ -268,6 +277,14 @@ func runTests(testCommand string, timeoutSeconds int, isInitial bool) (*TestResu
 		} else {
 			fmt.Printf("Tests failed: %v\n", result.FailedTests)
 		}
+	}
+
+	// If there was an error, also print stderr
+	if err != nil {
+		if errBuf.Len() > 0 {
+			fmt.Printf("Error output:\n%s\n", errBuf.String())
+		}
+		return result, fmt.Errorf("test execution failed: %w", err)
 	}
 
 	return result, nil
@@ -377,34 +394,56 @@ func getStateName(state *state.State) string {
 
 // FileWatcher provides file watching functionality using fsnotify
 type FileWatcher struct {
-	events chan struct{}
-	errors chan error
-	closed chan struct{}
+	watcher *fsnotify.Watcher
+	events  chan struct{}
+	errors  chan error
+	closed  chan struct{}
 }
 
 // NewFileWatcher creates a new file watcher for the given directory
 func NewFileWatcher(dir string) (*FileWatcher, error) {
-	// Use fsnotify for real file system events
-	// We'll need to add this dependency to go.mod
-	w := &FileWatcher{
-		events: make(chan struct{}, 10),
-		errors: make(chan error, 10),
-		closed: make(chan struct{}),
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, err
 	}
 
-	// For now, we'll keep the simplified implementation but mark it for improvement
-	// In a real implementation, we'd use fsnotify or similar library
+	// Add the directory to watch
+	err = watcher.Add(dir)
+	if err != nil {
+		watcher.Close()
+		return nil, err
+	}
 
-	// Start a goroutine that periodically checks for changes
+	w := &FileWatcher{
+		watcher: watcher,
+		events:  make(chan struct{}, 10),
+		errors:  make(chan error, 10),
+		closed:  make(chan struct{}),
+	}
+
+	// Start goroutine to handle fsnotify events
 	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		defer ticker.Stop()
-
+		defer watcher.Close()
 		for {
 			select {
-			case <-ticker.C:
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				// Only trigger on write events for files in the watched directory
+				if event.Op&fsnotify.Write == fsnotify.Write {
+					select {
+					case w.events <- struct{}{}:
+					default:
+						// Channel full, skip
+					}
+				}
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
 				select {
-				case w.events <- struct{}{}:
+				case w.errors <- err:
 				default:
 					// Channel full, skip
 				}

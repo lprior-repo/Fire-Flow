@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -13,6 +14,7 @@ import (
 type KernelMounter struct {
 	// Optional: track mounted paths for debugging
 	activeMounts map[string]*OverlayMount
+	mu           sync.RWMutex
 }
 
 // NewKernelMounter creates kernel-based mounter
@@ -78,7 +80,9 @@ func (k *KernelMounter) Mount(config MountConfig) (*OverlayMount, error) {
 		PID:       os.Getpid(),
 	}
 
+	k.mu.Lock()
 	k.activeMounts[config.MergedDir] = mount
+	k.mu.Unlock()
 	return mount, nil
 }
 
@@ -104,7 +108,9 @@ func (k *KernelMounter) Unmount(mount *OverlayMount) error {
 	os.RemoveAll(mount.Config.UpperDir)
 	os.RemoveAll(mount.Config.WorkDir)
 
+	k.mu.Lock()
 	delete(k.activeMounts, mount.Config.MergedDir)
+	k.mu.Unlock()
 	return nil
 }
 

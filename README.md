@@ -135,6 +135,51 @@ Fire-Flow includes a TDD enforcement tool that implements the Test && Commit || 
 - `fire-flow watch` - Watch for file changes and automatically run tests
 - `fire-flow gate` - Read from stdin and write to stdout for CI integration
 
+### OverlayFS Implementation Details
+
+The overlay filesystem implementation provides:
+
+- **Mounting**: Creates an overlay filesystem with the project directory as the lower layer and a temporary upper layer
+- **File Watching**: Uses fsnotify to monitor file changes in real-time
+- **Test Execution**: Automatically runs tests when file changes are detected
+- **Commit/Discard**: Commits changes to the real filesystem if tests pass, discards them if tests fail
+- **Cleanup**: Properly unmounts the overlay when the process exits
+
+When using `fire-flow watch`, the following occurs:
+1. An overlay mount is created with the current directory as the lower layer
+2. All file changes are written to the upper layer (tmpfs)
+3. When a file is modified, the system detects the change and runs tests
+4. If tests pass, changes are committed to the lower layer (real filesystem)
+5. If tests fail, changes are discarded from the upper layer
+6. The overlay is properly unmounted when the process exits
+
+### Usage Example
+
+```bash
+# Initialize Fire-Flow
+fire-flow init
+
+# Start watching for file changes
+fire-flow watch
+
+# In another terminal, make a change to a source file
+# The system will automatically run tests and either commit or discard the changes
+```
+
+### System Requirements
+
+- Linux with OverlayFS support
+- `sudo` privileges for mounting OverlayFS (required for `fire-flow watch`)
+- Go 1.24+ installed
+
+### Error Handling
+
+The system provides comprehensive error handling for:
+- Overlay mounting failures
+- Test execution errors
+- File watcher errors
+- Cleanup operations
+
 ### Configuration
 
 Fire-Flow uses Viper for configuration management. Configuration is stored in `.fire-flow/config.yaml`:

@@ -88,12 +88,12 @@ func createTempDir(prefix string) (string, error) {
 	return dir, nil
 }
 
-// GetMountInfo returns information about an active mount
-func (om *OverlayManager) GetMountInfo(mount *OverlayMount) string {
+// GetMountDetails returns detailed information about an active mount
+func (om *OverlayManager) GetMountDetails(mount *OverlayMount) string {
 	if mount == nil {
 		return "No mount active"
 	}
-	
+
 	return fmt.Sprintf("Mount: %s\nLower: %s\nUpper: %s\nWork: %s\nMerged: %s\nMounted At: %s",
 		mount.Config.MergedDir,
 		mount.Config.LowerDir,

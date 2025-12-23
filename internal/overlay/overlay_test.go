@@ -92,7 +92,7 @@ func TestOverlayManager_Discard(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestOverlayManager_GetMountInfo(t *testing.T) {
+func TestOverlayManager_GetMountDetails(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "fire-flow-test")
 	assert.NoError(t, err)
@@ -106,7 +106,7 @@ func TestOverlayManager_GetMountInfo(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Get info
-	info := manager.GetMountInfo(mount)
+	info := manager.GetMountDetails(mount)
 	assert.Contains(t, info, "Mount: ")
 	assert.Contains(t, info, "Lower: ")
 	assert.Contains(t, info, "Upper: ")
@@ -115,12 +115,12 @@ func TestOverlayManager_GetMountInfo(t *testing.T) {
 	assert.Contains(t, info, "Mounted At: ")
 }
 
-func TestOverlayManager_GetMountInfoNil(t *testing.T) {
+func TestOverlayManager_GetMountDetailsNil(t *testing.T) {
 	// Create manager with fake mounter
 	manager := NewOverlayManager(NewFakeMounter())
 
 	// Get info for nil mount
-	info := manager.GetMountInfo(nil)
+	info := manager.GetMountDetails(nil)
 	assert.Equal(t, "No mount active", info)
 }
 
