@@ -159,3 +159,153 @@ func TestTddGate_BlockedVsAllowedDecisions(t *testing.T) {
 	assert.True(t, passed)
 	assert.Contains(t, message, "TDD gate logic")
 }
+
+func TestTddGate_SingleTestMode_Enabled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	gate := NewTddGate(cfg)
+
+	// Verify single test mode is enabled by default
+	assert.True(t, gate.SingleTestMode, "SingleTestMode should be enabled by default")
+}
+
+func TestTddGate_ValidateSingleTest_OneTest_Passes(t *testing.T) {
+	cfg := config.DefaultConfig()
+	gate := NewTddGate(cfg)
+
+	// Result with exactly one test executed
+	result := &teststate.TestResult{
+		ExecutedTests: []string{"TestExample1"},
+		Passed:        true,
+	}
+
+	err := gate.ValidateSingleTest(result)
+	assert.NoError(t, err, "Single test should pass validation")
+}
+
+func TestTddGate_ValidateSingleTest_MultipleTests_Fails(t *testing.T) {
+	cfg := config.DefaultConfig()
+	gate := NewTddGate(cfg)
+
+	// Result with multiple tests executed - this should fail validation
+	result := &teststate.TestResult{
+		ExecutedTests: []string{"TestExample1", "TestExample2", "TestExample3"},
+		Passed:        true,
+	}
+
+	err := gate.ValidateSingleTest(result)
+	assert.Error(t, err, "Multiple tests should fail validation")
+	assert.ErrorIs(t, err, ErrMultipleTestsExecuted)
+	assert.Contains(t, err.Error(), "ran 3 tests")
+}
+
+func TestTddGate_ValidateSingleTest_NoTests_Fails(t *testing.T) {
+	cfg := config.DefaultConfig()
+	gate := NewTddGate(cfg)
+
+	// Result with no tests executed
+	result := &teststate.TestResult{
+		ExecutedTests: []string{},
+		Passed:        true,
+	}
+
+	err := gate.ValidateSingleTest(result)
+	assert.Error(t, err, "No tests should fail validation")
+	assert.Contains(t, err.Error(), "no tests were executed")
+}
+
+func TestTddGate_ValidateSingleTest_NilResult_Fails(t *testing.T) {
+	cfg := config.DefaultConfig()
+	gate := NewTddGate(cfg)
+
+	err := gate.ValidateSingleTest(nil)
+	assert.Error(t, err, "Nil result should fail validation")
+	assert.Contains(t, err.Error(), "no test result provided")
+}
+
+func TestTddGate_NewTddGateWithOptions_DisableSingleTestMode(t *testing.T) {
+	cfg := config.DefaultConfig()
+
+	// Create gate with single test mode disabled
+	gate := NewTddGateWithOptions(cfg, false)
+
+	assert.NotNil(t, gate)
+	assert.False(t, gate.SingleTestMode, "SingleTestMode should be disabled")
+}
+
+func TestTddGate_GetExecutedTestCount(t *testing.T) {
+	cfg := config.DefaultConfig()
+	gate := NewTddGate(cfg)
+
+	// Test with nil result
+	count := gate.GetExecutedTestCount(nil)
+	assert.Equal(t, 0, count)
+
+	// Test with empty result
+	result := &teststate.TestResult{ExecutedTests: []string{}}
+	count = gate.GetExecutedTestCount(result)
+	assert.Equal(t, 0, count)
+
+	// Test with multiple tests
+	result = &teststate.TestResult{ExecutedTests: []string{"Test1", "Test2", "Test3"}}
+	count = gate.GetExecutedTestCount(result)
+	assert.Equal(t, 3, count)
+}
+
+func TestTddGate_ParseGoTestOutput_TracksExecutedTests(t *testing.T) {
+	testStateDetector := teststate.NewTestStateDetector()
+
+	// Test output with multiple tests being run
+	mockOutput := `{"Action":"run","Test":"TestExample1","Package":"example"}
+{"Action":"pass","Test":"TestExample1","Package":"example"}
+{"Action":"run","Test":"TestExample2","Package":"example"}
+{"Action":"pass","Test":"TestExample2","Package":"example"}
+{"Action":"run","Test":"TestExample3","Package":"example"}
+{"Action":"fail","Test":"TestExample3","Package":"example"}
+`
+
+	result, err := testStateDetector.ParseGoTestOutput(mockOutput)
+	assert.NoError(t, err)
+
+	// Should track all 3 executed tests
+	assert.Len(t, result.ExecutedTests, 3)
+	assert.Contains(t, result.ExecutedTests, "TestExample1")
+	assert.Contains(t, result.ExecutedTests, "TestExample2")
+	assert.Contains(t, result.ExecutedTests, "TestExample3")
+
+	// Should also track failed tests separately
+	assert.Len(t, result.FailedTests, 1)
+	assert.Contains(t, result.FailedTests, "TestExample3")
+}
+
+func TestTddGate_SingleTestEnforcement_Integration(t *testing.T) {
+	// Integration test: Parse real-looking output and validate single test mode
+
+	cfg := config.DefaultConfig()
+	gate := NewTddGate(cfg)
+	testStateDetector := teststate.NewTestStateDetector()
+
+	// Scenario 1: Single test - should pass
+	singleTestOutput := `{"Action":"run","Test":"TestFeatureX","Package":"myapp/feature"}
+{"Action":"pass","Test":"TestFeatureX","Package":"myapp/feature"}
+`
+	result, err := testStateDetector.ParseGoTestOutput(singleTestOutput)
+	assert.NoError(t, err)
+
+	err = gate.ValidateSingleTest(result)
+	assert.NoError(t, err, "Single test should pass validation")
+
+	// Scenario 2: Multiple tests (shotgunning) - should fail
+	shotgunOutput := `{"Action":"run","Test":"TestFeature1","Package":"myapp/feature"}
+{"Action":"pass","Test":"TestFeature1","Package":"myapp/feature"}
+{"Action":"run","Test":"TestFeature2","Package":"myapp/feature"}
+{"Action":"pass","Test":"TestFeature2","Package":"myapp/feature"}
+{"Action":"run","Test":"TestFeature3","Package":"myapp/feature"}
+{"Action":"pass","Test":"TestFeature3","Package":"myapp/feature"}
+`
+	result, err = testStateDetector.ParseGoTestOutput(shotgunOutput)
+	assert.NoError(t, err)
+
+	err = gate.ValidateSingleTest(result)
+	assert.Error(t, err, "Shotgunning multiple tests should fail validation")
+	assert.ErrorIs(t, err, ErrMultipleTestsExecuted)
+}

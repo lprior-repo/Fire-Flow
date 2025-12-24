@@ -11,6 +11,9 @@ type TestResult struct {
 	Passed bool `json:"passed"`
 	// FailedTests contains the list of failed test names
 	FailedTests []string `json:"failedTests"`
+	// ExecutedTests contains the list of all tests that were executed
+	// Used for single-test enforcement in TCR workflow
+	ExecutedTests []string `json:"executedTests"`
 	// Duration is the test execution time in seconds
 	Duration int `json:"duration"`
 	// Output contains the raw test output
@@ -29,9 +32,13 @@ func NewTestStateDetector() *TestStateDetector {
 // Returns a TestResult struct with details about test execution
 func (t *TestStateDetector) ParseGoTestOutput(output string) (*TestResult, error) {
 	result := &TestResult{
-		Output:      output,
-		FailedTests: []string{},
+		Output:        output,
+		FailedTests:   []string{},
+		ExecutedTests: []string{},
 	}
+
+	// Track unique test names that were executed
+	executedSet := make(map[string]bool)
 
 	// Parse go test -json output
 	lines := strings.Split(output, "\n")
@@ -49,15 +56,26 @@ func (t *TestStateDetector) ParseGoTestOutput(output string) (*TestResult, error
 			continue
 		}
 
-		// Check if this is a failure event
 		action, ok := event["Action"].(string)
-		if !ok || action != "fail" {
+		if !ok {
 			continue
 		}
 
-		// Extract test name if present
-		if testName, ok := event["Test"].(string); ok && testName != "" {
-			result.FailedTests = append(result.FailedTests, testName)
+		// Track executed tests (on "run" action)
+		if action == "run" {
+			if testName, ok := event["Test"].(string); ok && testName != "" {
+				if !executedSet[testName] {
+					executedSet[testName] = true
+					result.ExecutedTests = append(result.ExecutedTests, testName)
+				}
+			}
+		}
+
+		// Track failed tests (on "fail" action)
+		if action == "fail" {
+			if testName, ok := event["Test"].(string); ok && testName != "" {
+				result.FailedTests = append(result.FailedTests, testName)
+			}
 		}
 	}
 
