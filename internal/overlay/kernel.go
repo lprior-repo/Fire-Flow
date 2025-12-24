@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -14,7 +13,6 @@ import (
 type KernelMounter struct {
 	// Optional: track mounted paths for debugging
 	activeMounts map[string]*OverlayMount
-	mu           sync.RWMutex
 }
 
 // NewKernelMounter creates kernel-based mounter
@@ -29,26 +27,26 @@ func (k *KernelMounter) Mount(config MountConfig) (*OverlayMount, error) {
 	// Step 1: Validate LowerDir exists
 	info, err := os.Stat(config.LowerDir)
 	if err != nil {
-		return nil, &MountError{Reason: "invalid_config", Detail: fmt.Errorf("lowerdir not found: %w", err)}
+		return nil, &OverlayError{Op: "mount", Err: fmt.Errorf("lowerdir not found: %w", err)}
 	}
 	if !info.IsDir() {
-		return nil, &MountError{Reason: "invalid_config", Detail: fmt.Errorf("lowerdir must be directory: %s", config.LowerDir)}
+		return nil, &OverlayError{Op: "mount", Err: fmt.Errorf("lowerdir must be directory: %s", config.LowerDir)}
 	}
 
 	// Step 2: Create temporary directories
 	if err := os.MkdirAll(config.UpperDir, 0700); err != nil {
-		return nil, &MountError{Reason: "create_upperdir", Detail: fmt.Errorf("failed to create upperdir: %w", err)}
+		return nil, &OverlayError{Op: "mount", Err: fmt.Errorf("failed to create upperdir: %w", err)}
 	}
 
 	if err := os.MkdirAll(config.WorkDir, 0700); err != nil {
 		os.RemoveAll(config.UpperDir) // cleanup on failure
-		return nil, &MountError{Reason: "create_workdir", Detail: fmt.Errorf("failed to create workdir: %w", err)}
+		return nil, &OverlayError{Op: "mount", Err: fmt.Errorf("failed to create workdir: %w", err)}
 	}
 
 	if err := os.MkdirAll(config.MergedDir, 0700); err != nil {
 		os.RemoveAll(config.UpperDir)
 		os.RemoveAll(config.WorkDir)
-		return nil, &MountError{Reason: "create_mergeddir", Detail: fmt.Errorf("failed to create mergeddir: %w", err)}
+		return nil, &OverlayError{Op: "mount", Err: fmt.Errorf("failed to create mergeddir: %w", err)}
 	}
 
 	// Step 3: Build mount options
@@ -70,7 +68,7 @@ func (k *KernelMounter) Mount(config MountConfig) (*OverlayMount, error) {
 		if err == syscall.ENODEV {
 			return nil, &MountError{Reason: "no_device", Detail: err}
 		}
-		return nil, &MountError{Reason: "mount_failed", Detail: err}
+		return nil, &OverlayError{Op: "mount", Err: fmt.Errorf("mount failed: %w", err)}
 	}
 
 	// Step 5: Create OverlayMount record
@@ -80,9 +78,7 @@ func (k *KernelMounter) Mount(config MountConfig) (*OverlayMount, error) {
 		PID:       os.Getpid(),
 	}
 
-	k.mu.Lock()
 	k.activeMounts[config.MergedDir] = mount
-	k.mu.Unlock()
 	return mount, nil
 }
 
@@ -108,9 +104,7 @@ func (k *KernelMounter) Unmount(mount *OverlayMount) error {
 	os.RemoveAll(mount.Config.UpperDir)
 	os.RemoveAll(mount.Config.WorkDir)
 
-	k.mu.Lock()
 	delete(k.activeMounts, mount.Config.MergedDir)
-	k.mu.Unlock()
 	return nil
 }
 
@@ -179,23 +173,23 @@ func isWhiteout(info os.FileInfo) bool {
 func copyFile(src, dst string) error {
 	srcFile, err := os.Open(src)
 	if err != nil {
-		return fmt.Errorf("open source: %w", err)
+		return &OverlayError{Op: "copy", Err: fmt.Errorf("open source: %w", err)}
 	}
 	defer srcFile.Close()
 
 	srcInfo, err := srcFile.Stat()
 	if err != nil {
-		return fmt.Errorf("stat source: %w", err)
+		return &OverlayError{Op: "copy", Err: fmt.Errorf("stat source: %w", err)}
 	}
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
-		return fmt.Errorf("create destination: %w", err)
+		return &OverlayError{Op: "copy", Err: fmt.Errorf("create destination: %w", err)}
 	}
 	defer dstFile.Close()
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("copy contents: %w", err)
+		return &OverlayError{Op: "copy", Err: fmt.Errorf("copy contents: %w", err)}
 	}
 
 	return os.Chmod(dst, srcInfo.Mode().Perm())

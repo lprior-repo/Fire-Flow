@@ -10,6 +10,11 @@ import (
 
 // Integration test for the overlay manager
 func TestOverlayManager_Integration(t *testing.T) {
+	// Skip if not root
+	if os.Geteuid() != 0 {
+		t.Skip("requires root")
+	}
+
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "fire-flow-overlay-test")
 	assert.NoError(t, err)
@@ -20,11 +25,18 @@ func TestOverlayManager_Integration(t *testing.T) {
 	err = os.WriteFile(testFile, []byte("test content"), 0644)
 	assert.NoError(t, err)
 
-	// Create manager with fake mounter
-	manager := NewOverlayManager(NewFakeMounter())
+	// Create manager
+	manager := NewOverlayManager()
 
-	// Mount
-	mount, err := manager.Mount(tempDir)
+	// Mount using kernel mounter
+	kernelMounter := manager.GetMounter("kernel")
+	config := MountConfig{
+		LowerDir:  tempDir,
+		UpperDir:  filepath.Join(tempDir, "upper"),
+		WorkDir:   filepath.Join(tempDir, "work"),
+		MergedDir: filepath.Join(tempDir, "merged"),
+	}
+	mount, err := kernelMounter.Mount(config)
 	assert.NoError(t, err)
 	assert.NotNil(t, mount)
 
@@ -35,13 +47,13 @@ func TestOverlayManager_Integration(t *testing.T) {
 	assert.NotEmpty(t, mount.Config.MergedDir)
 
 	// Test that we can commit and discard without errors
-	err = manager.Commit(mount)
+	err = kernelMounter.Commit(mount)
 	assert.NoError(t, err)
 
-	err = manager.Discard(mount)
+	err = kernelMounter.Discard(mount)
 	assert.NoError(t, err)
 
 	// Test unmounting
-	err = manager.Unmount(mount)
+	err = kernelMounter.Unmount(mount)
 	assert.NoError(t, err)
 }

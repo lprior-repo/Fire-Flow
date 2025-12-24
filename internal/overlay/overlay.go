@@ -6,99 +6,164 @@ import (
 	"time"
 )
 
-// OverlayManager provides high-level operations for managing overlays
+// OverlayManager handles overlay operations and provides a high-level interface
 type OverlayManager struct {
-	mounter Mounter
+	fakeMounter  *FakeMounter
+	kernelMounter *KernelMounter
 }
 
 // NewOverlayManager creates a new overlay manager
-func NewOverlayManager(mounter Mounter) *OverlayManager {
+func NewOverlayManager() *OverlayManager {
 	return &OverlayManager{
-		mounter: mounter,
+		fakeMounter:  NewFakeMounter(),
+		kernelMounter: NewKernelMounter(),
 	}
 }
 
-// Mount creates and mounts an overlay filesystem
-func (om *OverlayManager) Mount(lowerDir string) (*OverlayMount, error) {
-	// Generate temporary directories for overlay
-	upperDir, err := createTempDir("fire-flow-overlay-upper")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create upper directory: %w", err)
+// GetMounter returns a mounter of the specified type
+func (om *OverlayManager) GetMounter(mounterType string) Mounter {
+	switch mounterType {
+	case "fake":
+		return om.fakeMounter
+	case "kernel":
+		return om.kernelMounter
+	default:
+		return nil
+	}
+}
+
+// ValidateMountConfig validates the mount configuration
+func (om *OverlayManager) ValidateMountConfig(config MountConfig) error {
+	if config.LowerDir == "" {
+		return fmt.Errorf("lowerdir required")
+	}
+	if config.UpperDir == "" {
+		return fmt.Errorf("upperdir required")
+	}
+	if config.WorkDir == "" {
+		return fmt.Errorf("workdir required")
+	}
+	if config.MergedDir == "" {
+		return fmt.Errorf("mergeddir required")
 	}
 
-	workDir, err := createTempDir("fire-flow-overlay-work")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create work directory: %w", err)
+	// Check that lower directory exists
+	if _, err := os.Stat(config.LowerDir); os.IsNotExist(err) {
+		return fmt.Errorf("lower directory does not exist: %s", config.LowerDir)
 	}
 
-	mergedDir, err := createTempDir("fire-flow-overlay-merged")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create merged directory: %w", err)
+	return nil
+}
+
+// CreateTempDirs creates temporary directories for overlay
+func (om *OverlayManager) CreateTempDirs(config *MountConfig) error {
+	// Create upper directory
+	if err := os.MkdirAll(config.UpperDir, 0700); err != nil {
+		return fmt.Errorf("failed to create upperdir: %w", err)
 	}
 
-	// Create mount configuration
-	config := MountConfig{
-		LowerDir:  lowerDir,
-		UpperDir:  upperDir,
-		WorkDir:   workDir,
-		MergedDir: mergedDir,
+	// Create work directory
+	if err := os.MkdirAll(config.WorkDir, 0700); err != nil {
+		os.RemoveAll(config.UpperDir)
+		return fmt.Errorf("failed to create workdir: %w", err)
 	}
 
-	// Mount using the mounter
-	mount, err := om.mounter.Mount(config)
+	// Create merged directory
+	if err := os.MkdirAll(config.MergedDir, 0700); err != nil {
+		os.RemoveAll(config.UpperDir)
+		os.RemoveAll(config.WorkDir)
+		return fmt.Errorf("failed to create mergeddir: %w", err)
+	}
+
+	return nil
+}
+
+// CleanupTempDirs removes temporary directories
+func (om *OverlayManager) CleanupTempDirs(config MountConfig) error {
+	// Cleanup temporary directories (best effort)
+	os.RemoveAll(config.MergedDir)
+	os.RemoveAll(config.UpperDir)
+	os.RemoveAll(config.WorkDir)
+	return nil
+}
+
+// MountWithCleanup mounts an overlay and ensures cleanup on error
+func (om *OverlayManager) MountWithCleanup(config MountConfig) (*OverlayMount, error) {
+	// Validate config
+	if err := om.ValidateMountConfig(config); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
+	// Create temporary directories
+	if err := om.CreateTempDirs(&config); err != nil {
+		return nil, fmt.Errorf("failed to create temp dirs: %w", err)
+	}
+
+	// Create mounter and mount
+	mounter := om.GetMounter("kernel")
+	if mounter == nil {
+		return nil, fmt.Errorf("no valid mounter found")
+	}
+
+	mount, err := mounter.Mount(config)
 	if err != nil {
-		// Cleanup on failure
-		os.RemoveAll(upperDir)
-		os.RemoveAll(workDir)
-		os.RemoveAll(mergedDir)
-		return nil, err
+		// Cleanup on mount failure
+		om.CleanupTempDirs(config)
+		return nil, fmt.Errorf("mount failed: %w", err)
 	}
 
 	return mount, nil
 }
 
-// Unmount removes the overlay mount and cleans up
-func (om *OverlayManager) Unmount(mount *OverlayMount) error {
-	return om.mounter.Unmount(mount)
-}
-
-// Commit merges changes from upper to lower layer
-func (om *OverlayManager) Commit(mount *OverlayMount) error {
-	return om.mounter.Commit(mount)
-}
-
-// Discard removes upper layer without committing
-func (om *OverlayManager) Discard(mount *OverlayMount) error {
-	return om.mounter.Discard(mount)
-}
-
-// createTempDir creates a temporary directory with the given prefix
-func createTempDir(prefix string) (string, error) {
-	// Use the system temp directory with our prefix
-	dir, err := os.MkdirTemp("", prefix)
-	if err != nil {
-		return "", err
-	}
-	
-	// Make sure it's owned by the current user
-	if err := os.Chmod(dir, 0700); err != nil {
-		return "", err
-	}
-	
-	return dir, nil
-}
-
-// GetMountDetails returns detailed information about an active mount
-func (om *OverlayManager) GetMountDetails(mount *OverlayMount) string {
+// GetOverlayMountPath returns the merged directory path for a given mount
+func (om *OverlayManager) GetOverlayMountPath(mount *OverlayMount) string {
 	if mount == nil {
-		return "No mount active"
+		return ""
 	}
+	return mount.Config.MergedDir
+}
 
-	return fmt.Sprintf("Mount: %s\nLower: %s\nUpper: %s\nWork: %s\nMerged: %s\nMounted At: %s",
-		mount.Config.MergedDir,
+// GetOverlayUpperDir returns the upper directory path for a given mount
+func (om *OverlayManager) GetOverlayUpperDir(mount *OverlayMount) string {
+	if mount == nil {
+		return ""
+	}
+	return mount.Config.UpperDir
+}
+
+// GetOverlayWorkDir returns the work directory path for a given mount
+func (om *OverlayManager) GetOverlayWorkDir(mount *OverlayMount) string {
+	if mount == nil {
+		return ""
+	}
+	return mount.Config.WorkDir
+}
+
+// GetOverlayLowerDir returns the lower directory path for a given mount
+func (om *OverlayManager) GetOverlayLowerDir(mount *OverlayMount) string {
+	if mount == nil {
+		return ""
+	}
+	return mount.Config.LowerDir
+}
+
+// FormatMountInfo returns a formatted string with mount information
+func (om *OverlayManager) FormatMountInfo(mount *OverlayMount) string {
+	if mount == nil {
+		return "No mount information"
+	}
+	
+	return fmt.Sprintf("Mount Info:\n"+
+		"  LowerDir: %s\n"+
+		"  UpperDir: %s\n"+
+		"  WorkDir: %s\n"+
+		"  MergedDir: %s\n"+
+		"  MountedAt: %s\n"+
+		"  PID: %d",
 		mount.Config.LowerDir,
 		mount.Config.UpperDir,
 		mount.Config.WorkDir,
 		mount.Config.MergedDir,
-		mount.MountedAt.Format(time.RFC3339))
+		mount.MountedAt.Format(time.RFC3339),
+		mount.PID)
 }

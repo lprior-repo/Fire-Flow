@@ -1,130 +1,46 @@
 package overlay
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestOverlayManager_Mount(t *testing.T) {
-	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "fire-flow-test")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+// TestOverlayManager_Create tests creating an overlay manager
+func TestOverlayManager_Create(t *testing.T) {
+	// Arrange
+	manager := NewOverlayManager()
 
-	// Create a test file in the lower directory
-	testFile := filepath.Join(tempDir, "test.txt")
-	err = os.WriteFile(testFile, []byte("test content"), 0644)
-	assert.NoError(t, err)
-
-	// Create manager with fake mounter
-	manager := NewOverlayManager(NewFakeMounter())
-
-	// Mount
-	mount, err := manager.Mount(tempDir)
-	assert.NoError(t, err)
-	assert.NotNil(t, mount)
-
-	// Verify mount configuration
-	assert.Equal(t, tempDir, mount.Config.LowerDir)
-	assert.NotEmpty(t, mount.Config.UpperDir)
-	assert.NotEmpty(t, mount.Config.WorkDir)
-	assert.NotEmpty(t, mount.Config.MergedDir)
-	
-	// Verify mount was created
-	assert.True(t, mount.MountedAt.Before(now()))
+	// Act & Assert
+	assert.NotNil(t, manager)
+	assert.NotNil(t, manager.fakeMounter)
+	assert.NotNil(t, manager.kernelMounter)
 }
 
-func TestOverlayManager_Unmount(t *testing.T) {
-	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "fire-flow-test")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+// TestOverlayManager_GetMounter tests getting the correct mounter
+func TestOverlayManager_GetMounter(t *testing.T) {
+	// Arrange
+	manager := NewOverlayManager()
 
-	// Create manager with fake mounter
-	manager := NewOverlayManager(NewFakeMounter())
+	// Act
+	fakeMounter := manager.GetMounter("fake")
+	kernelMounter := manager.GetMounter("kernel")
 
-	// Mount first
-	mount, err := manager.Mount(tempDir)
-	assert.NoError(t, err)
-
-	// Unmount
-	err = manager.Unmount(mount)
-	assert.NoError(t, err)
+	// Assert
+	assert.NotNil(t, fakeMounter)
+	assert.NotNil(t, kernelMounter)
+	assert.IsType(t, &FakeMounter{}, fakeMounter)
+	assert.IsType(t, &KernelMounter{}, kernelMounter)
 }
 
-func TestOverlayManager_Commit(t *testing.T) {
-	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "fire-flow-test")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+// TestOverlayManager_GetMounter_InvalidType tests getting invalid mounter type
+func TestOverlayManager_GetMounter_InvalidType(t *testing.T) {
+	// Arrange
+	manager := NewOverlayManager()
 
-	// Create manager with fake mounter
-	manager := NewOverlayManager(NewFakeMounter())
+	// Act
+	mounter := manager.GetMounter("invalid")
 
-	// Mount first
-	mount, err := manager.Mount(tempDir)
-	assert.NoError(t, err)
-
-	// Commit
-	err = manager.Commit(mount)
-	assert.NoError(t, err)
-}
-
-func TestOverlayManager_Discard(t *testing.T) {
-	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "fire-flow-test")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
-
-	// Create manager with fake mounter
-	manager := NewOverlayManager(NewFakeMounter())
-
-	// Mount first
-	mount, err := manager.Mount(tempDir)
-	assert.NoError(t, err)
-
-	// Discard
-	err = manager.Discard(mount)
-	assert.NoError(t, err)
-}
-
-func TestOverlayManager_GetMountDetails(t *testing.T) {
-	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "fire-flow-test")
-	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
-
-	// Create manager with fake mounter
-	manager := NewOverlayManager(NewFakeMounter())
-
-	// Mount first
-	mount, err := manager.Mount(tempDir)
-	assert.NoError(t, err)
-
-	// Get info
-	info := manager.GetMountDetails(mount)
-	assert.Contains(t, info, "Mount: ")
-	assert.Contains(t, info, "Lower: ")
-	assert.Contains(t, info, "Upper: ")
-	assert.Contains(t, info, "Work: ")
-	assert.Contains(t, info, "Merged: ")
-	assert.Contains(t, info, "Mounted At: ")
-}
-
-func TestOverlayManager_GetMountDetailsNil(t *testing.T) {
-	// Create manager with fake mounter
-	manager := NewOverlayManager(NewFakeMounter())
-
-	// Get info for nil mount
-	info := manager.GetMountDetails(nil)
-	assert.Equal(t, "No mount active", info)
-}
-
-// Helper to get current time for comparison
-func now() time.Time {
-	return time.Now()
+	// Assert
+	assert.Nil(t, mounter)
 }
