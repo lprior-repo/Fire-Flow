@@ -9,10 +9,18 @@ import (
 	"time"
 )
 
+// UnmountFunc is a function type for unmounting filesystems
+// This allows for testing without actual syscalls
+type UnmountFunc func(target string, flags int) error
+
+// defaultUnmount is the default unmount function using syscall.Unmount
+var defaultUnmount UnmountFunc = syscall.Unmount
+
 // OverlayManager handles overlay operations and provides a high-level interface
 type OverlayManager struct {
 	fakeMounter   *FakeMounter
 	kernelMounter *KernelMounter
+	unmount       UnmountFunc // injectable for testing
 }
 
 // NewOverlayManager creates a new overlay manager
@@ -20,7 +28,13 @@ func NewOverlayManager() *OverlayManager {
 	return &OverlayManager{
 		fakeMounter:   NewFakeMounter(),
 		kernelMounter: NewKernelMounter(),
+		unmount:       defaultUnmount,
 	}
+}
+
+// SetUnmountFunc sets a custom unmount function (for testing)
+func (om *OverlayManager) SetUnmountFunc(fn UnmountFunc) {
+	om.unmount = fn
 }
 
 // GetMounter returns a mounter of the specified type
@@ -263,7 +277,20 @@ func (om *OverlayManager) CleanupStaleMounts() (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to detect stale mounts: %w", err)
 	}
+	return om.cleanupStaleMountsList(staleMounts)
+}
 
+// CleanupStaleMountsFromFile is like CleanupStaleMounts but reads from a specific file (for testing)
+func (om *OverlayManager) CleanupStaleMountsFromFile(mountsFile string) (int, error) {
+	staleMounts, err := om.DetectStaleMountsFromFile(mountsFile)
+	if err != nil {
+		return 0, fmt.Errorf("failed to detect stale mounts: %w", err)
+	}
+	return om.cleanupStaleMountsList(staleMounts)
+}
+
+// cleanupStaleMountsList is the internal implementation
+func (om *OverlayManager) cleanupStaleMountsList(staleMounts []StaleMount) (int, error) {
 	cleaned := 0
 	var lastErr error
 
@@ -280,13 +307,18 @@ func (om *OverlayManager) CleanupStaleMounts() (int, error) {
 
 // CleanupStaleMount unmounts and cleans up a single stale mount
 func (om *OverlayManager) CleanupStaleMount(stale StaleMount) error {
+	unmount := om.unmount
+	if unmount == nil {
+		unmount = defaultUnmount
+	}
+
 	// Try standard unmount first
-	err := syscall.Unmount(stale.MergedDir, 0)
+	err := unmount(stale.MergedDir, 0)
 	if err != nil {
 		// Try with lazy unmount
-		if err := syscall.Unmount(stale.MergedDir, syscall.MNT_DETACH); err != nil {
+		if err := unmount(stale.MergedDir, syscall.MNT_DETACH); err != nil {
 			// Try with force
-			if err := syscall.Unmount(stale.MergedDir, syscall.MNT_FORCE); err != nil {
+			if err := unmount(stale.MergedDir, syscall.MNT_FORCE); err != nil {
 				return fmt.Errorf("failed to unmount %s: %w", stale.MergedDir, err)
 			}
 		}
