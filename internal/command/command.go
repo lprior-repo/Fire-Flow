@@ -1,26 +1,31 @@
 package command
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/lprior-repo/Fire-Flow/internal/config"
-	"github.com/lprior-repo/Fire-Flow/internal/state"
 	"github.com/lprior-repo/Fire-Flow/internal/utils"
 	"github.com/spf13/viper"
-	"gopkg.in/yaml.v3"
 )
 
 // Command interface defines the structure for all Fire-Flow commands
+// Execute returns an error if the command fails
 type Command interface {
+	// Execute runs the command and returns an error if it fails
 	Execute() error
 }
 
-// CommandFactory creates command instances
+// CommandFactory creates command instances based on command name
 type CommandFactory struct{}
 
 // NewCommand creates a new command instance based on the command name
+// Returns an error if the command name is unknown
 func (f *CommandFactory) NewCommand(name string) (Command, error) {
 	switch name {
 	case "init":
@@ -39,9 +44,12 @@ func (f *CommandFactory) NewCommand(name string) (Command, error) {
 }
 
 // InitCommand represents the init command
+// This command initializes a Fire-Flow environment by creating necessary directories,
+// configuration file, and state file.
 type InitCommand struct{}
 
 // Execute runs the init command to set up Fire-Flow environment
+// It creates the TCR directory, config file, and state file if they don't exist
 func (cmd *InitCommand) Execute() error {
 	// Create directories
 	tcrPath := utils.GetTCRPath()
@@ -78,9 +86,11 @@ func (cmd *InitCommand) Execute() error {
 }
 
 // StatusCommand represents the status command
+// This command displays the current state of the Fire-Flow environment.
 type StatusCommand struct{}
 
 // Execute runs the status command to show current state
+// It prints information about the current state including test status and commit history
 func (cmd *StatusCommand) Execute() error {
 	// Load state
 	state, err := utils.LoadStateWithValidation()
@@ -202,10 +212,14 @@ func loadConfig() (*config.Config, error) {
 
 // TestResult represents the result of test execution
 type TestResult struct {
-	Passed      bool     `json:"passed"`
+	// Passed indicates whether all tests passed
+	Passed bool `json:"passed"`
+	// FailedTests contains the list of failed test names
 	FailedTests []string `json:"failedTests"`
-	Duration    int      `json:"duration"`
-	Output      string   `json:"output"`
+	// Duration is the test execution time in seconds
+	Duration int `json:"duration"`
+	// Output contains the raw test output
+	Output string `json:"output"`
 }
 
 // runTests executes the test command with timeout
@@ -260,13 +274,16 @@ func runTests(testCommand string, timeoutSeconds int, isInitial bool) (*TestResu
 }
 
 // extractFailedTests parses test output to extract failed test names
+// It expects output in JSON format from "go test -json" command
 func extractFailedTests(output string) []string {
 	var failedTests []string
 
 	// Parse go test -json output
 	lines := strings.Split(output, "\n")
 	for _, line := range lines {
-		if strings.TrimSpace(line) == "" {
+		// Skip empty lines (including whitespace-only lines)
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
 
