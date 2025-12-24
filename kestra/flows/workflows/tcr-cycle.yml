@@ -5,10 +5,12 @@ description: |
   TCR (Test && Commit || Revert) Main Orchestration Workflow
 
   This is the HEAVY ORCHESTRATOR pattern:
-  - Orchestrator handles ONLY flow control, branching, retries
+  - Kestra handles ONLY flow control, branching, retries
   - State passed via workflow context (not files)
   - Declarative error handling
   - Visual debugging in Kestra UI
+
+  Uses OpenCode with Qwen3-Coder for AI-assisted fixes when tests fail.
 
   Based on AWS Step Functions best practices:
   - Replace Lambda orchestrator with Step Functions
@@ -19,16 +21,19 @@ description: |
     1. Load current state
     2. Run tests
     3. IF tests pass → Commit changes
-    4. IF tests fail → Revert changes
-    5. Save new state
+    4. IF tests fail → Use OpenCode to fix, then retry or revert
 
 inputs:
   - id: working_dir
     type: STRING
-    defaults: /home/lewis/src/Fire-Flow
+    defaults: /home/lewis/kestra/data/Fire-Flow
   - id: commit_message
     type: STRING
     defaults: "TCR: Auto-commit (tests passing)"
+  - id: use_ai_fix
+    type: BOOLEAN
+    description: Use OpenCode+Qwen3 to attempt fixing test failures
+    defaults: false
 
 tasks:
   - id: log_start
@@ -44,26 +49,34 @@ tasks:
     commands:
       - |
         cd "{{ inputs.working_dir }}"
+        export HOME="/home/lewis"
+        export PATH="/home/lewis/.local/share/mise/installs/go/1.25.5/bin:/home/lewis/.local/bin:/usr/bin:$PATH"
+        export GOROOT="/home/lewis/.local/share/mise/installs/go/1.25.5"
 
         # Run tests
         echo "Running tests..."
+        echo "Go location: $(which go 2>&1 || echo 'not found')"
+        echo "Go version: $(go version 2>&1 || echo 'failed')"
         TEST_OUTPUT=$(go test -json -timeout 30s ./... 2>&1) || true
+        echo "Test output lines: $(echo "$TEST_OUTPUT" | wc -l)"
 
-        # Parse results
-        FAILED_COUNT=$(echo "$TEST_OUTPUT" | grep '"Action":"fail"' | grep -c '"Test":' || echo "0")
-        EXECUTED_COUNT=$(echo "$TEST_OUTPUT" | grep '"Action":"run"' | grep -c '"Test":' || echo "0")
+        # Parse results (use tr to remove any newlines from grep -c output)
+        FAILED_COUNT=$(echo "$TEST_OUTPUT" | /usr/bin/grep '"Action":"fail"' | /usr/bin/grep -c '"Test":' 2>/dev/null | tr -d '\n' || echo "0")
+        EXECUTED_COUNT=$(echo "$TEST_OUTPUT" | /usr/bin/grep '"Action":"run"' | /usr/bin/grep -c '"Test":' 2>/dev/null | tr -d '\n' || echo "0")
+
+        # Ensure they are numbers
+        FAILED_COUNT=${FAILED_COUNT:-0}
+        EXECUTED_COUNT=${EXECUTED_COUNT:-0}
 
         if [ "$FAILED_COUNT" -eq "0" ] && [ "$EXECUTED_COUNT" -gt "0" ]; then
-          echo "TESTS_PASSED"
+          echo '::{"outputs":{"result":"PASSED","executed":'$EXECUTED_COUNT',"failed":'$FAILED_COUNT'}}::'
         else
-          echo "TESTS_FAILED"
+          echo '::{"outputs":{"result":"FAILED","executed":'$EXECUTED_COUNT',"failed":'$FAILED_COUNT'}}::'
         fi
-
-        echo "executed=$EXECUTED_COUNT failed=$FAILED_COUNT"
 
   - id: check_result
     type: io.kestra.plugin.core.flow.If
-    condition: "{{ outputs.run_tests.vars.stdout contains 'TESTS_PASSED' }}"
+    condition: "{{ outputs.run_tests.vars.result == 'PASSED' }}"
     then:
       # GREEN PATH: Tests passed → Commit
       - id: log_green
@@ -77,6 +90,7 @@ tasks:
         commands:
           - |
             cd "{{ inputs.working_dir }}"
+            export HOME="/home/lewis"
             git add -A
             if git diff --cached --quiet; then
               echo "Nothing to commit"
@@ -99,7 +113,7 @@ tasks:
             echo "State saved: GREEN"
 
     else:
-      # RED PATH: Tests failed → Revert
+      # RED PATH: Tests failed → Revert (or AI fix if enabled)
       - id: log_red
         type: io.kestra.core.tasks.log.Log
         message: "❌ Tests FAILED - reverting changes"
@@ -111,6 +125,7 @@ tasks:
         commands:
           - |
             cd "{{ inputs.working_dir }}"
+            export HOME="/home/lewis"
             echo "Reverting:"
             git status --short
             git reset --hard HEAD

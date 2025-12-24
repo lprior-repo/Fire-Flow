@@ -1,0 +1,117 @@
+id: opencode-beads-loop
+namespace: fire.flow
+
+description: |
+  Runs OpenCode with Qwen3-Coder in a loop, working through beads until all are complete.
+  Uses local Qwen3-Coder-30B model via llama-server on port 8080.
+
+  Heavy Orchestrator Pattern:
+  - Kestra handles flow control, retries, timeouts
+  - OpenCode handles AI coding tasks
+  - Beads provide work items
+
+inputs:
+  - id: working_dir
+    type: STRING
+    description: Working directory for the project
+    defaults: /home/lewis/kestra/data/Fire-Flow
+
+  - id: max_iterations
+    type: INT
+    description: Maximum iterations to prevent infinite loops
+    defaults: 50
+
+tasks:
+  - id: start
+    type: io.kestra.core.tasks.log.Log
+    message: "Starting OpenCode+Qwen3 beads loop in {{ inputs.working_dir }}"
+
+  - id: beads_loop
+    type: io.kestra.plugin.core.flow.ForEach
+    values: "{{ range(1, inputs.max_iterations) }}"
+    tasks:
+      - id: get_next_bead
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: Get the next ready bead ID
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
+        commands:
+          - |
+            cd {{ inputs.working_dir }}
+            export HOME="/home/lewis"
+            export PATH="/home/lewis/.local/share/mise/installs/go/1.25.5/bin:/home/lewis/.local/bin:/usr/bin:$PATH"
+            export GOROOT="/home/lewis/.local/share/mise/installs/go/1.25.5"
+            BEAD_ID=$(bd ready 2>/dev/null | /usr/bin/grep -oE "Fire-Flow-[a-z0-9.]+" | head -1)
+            echo "Next bead: $BEAD_ID"
+            echo "$BEAD_ID"
+
+      - id: run_opencode
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: Run OpenCode with Qwen3 to work on the bead
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
+        timeout: PT60M
+        commands:
+          - |
+            cd {{ inputs.working_dir }}
+            export HOME="/home/lewis"
+            export PATH="/home/lewis/.local/share/mise/installs/go/1.25.5/bin:/home/lewis/.local/bin:/usr/bin:$PATH"
+            export GOROOT="/home/lewis/.local/share/mise/installs/go/1.25.5"
+            export XDG_CONFIG_HOME="/home/lewis/.config"
+
+            BEAD_ID=$(bd ready 2>/dev/null | /usr/bin/grep -oE "Fire-Flow-[a-z0-9.]+" | head -1)
+            if [ -z "$BEAD_ID" ]; then
+              echo "No beads found, skipping"
+              exit 0
+            fi
+
+            echo "Working on bead: $BEAD_ID"
+            bd update $BEAD_ID --status=in_progress
+
+            # Get bead details
+            BEAD_DETAILS=$(bd show $BEAD_ID)
+
+            # Create prompt file for OpenCode
+            PROMPT_FILE="/tmp/opencode-prompt-$BEAD_ID.txt"
+            cat > "$PROMPT_FILE" << PROMPT_EOF
+            Work on this bead and complete it: $BEAD_ID
+
+            Details:
+            $BEAD_DETAILS
+
+            Instructions:
+            1. Analyze what needs to be done
+            2. Implement the changes
+            3. Run tests to verify
+            4. When complete, close the bead with: bd close $BEAD_ID
+            PROMPT_EOF
+
+            # Run OpenCode with the prompt using local Qwen3-Coder model
+            echo "Running OpenCode with Qwen3-Coder..."
+            opencode run -m local/qwen3-coder "$(cat $PROMPT_FILE)" 2>&1 || true
+
+            # Cleanup
+            rm -f "$PROMPT_FILE"
+
+            # Sync beads
+            bd sync 2>/dev/null || true
+
+      - id: iteration_log
+        type: io.kestra.core.tasks.log.Log
+        message: "Completed iteration {{ taskrun.value }}"
+
+  - id: sync_final
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Final sync of beads
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - |
+        cd {{ inputs.working_dir }}
+        export HOME="/home/lewis"
+        export PATH="/home/lewis/.local/bin:/usr/bin:$PATH"
+        bd sync 2>/dev/null || true
+
+  - id: complete
+    type: io.kestra.core.tasks.log.Log
+    message: "OpenCode beads loop workflow completed"
