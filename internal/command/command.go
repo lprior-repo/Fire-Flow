@@ -38,6 +38,8 @@ func (f *CommandFactory) NewCommand(name string) (Command, error) {
 		return &GateCommand{}, nil
 	case "tdd-gate":
 		return &TddGateCommand{}, nil
+	case "run-tests":
+		return &RunTestsCommand{}, nil
 	default:
 		return nil, fmt.Errorf("unknown command: %s", name)
 	}
