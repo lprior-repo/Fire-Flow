@@ -1,0 +1,92 @@
+id: claude-beads-loop
+namespace: fire.flow
+
+description: |
+  Runs Claude Code in a loop, working through beads until all are complete.
+  Each iteration picks a ready bead, runs Claude to complete it, and continues.
+
+inputs:
+  - id: working_dir
+    type: STRING
+    description: Working directory for the project
+    defaults: /home/lewis/src/Fire-Flow
+
+  - id: max_iterations
+    type: INT
+    description: Maximum iterations to prevent infinite loops
+    defaults: 50
+
+tasks:
+  - id: start
+    type: io.kestra.core.tasks.log.Log
+    message: "Starting Claude beads loop in {{ inputs.working_dir }}"
+
+  - id: beads_loop
+    type: io.kestra.plugin.core.flow.ForEach
+    values: "{{ range(1, inputs.max_iterations) }}"
+    tasks:
+      - id: get_next_bead
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: Get the next ready bead ID
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
+        commands:
+          - |
+            cd {{ inputs.working_dir }}
+            export HOME="/home/lewis"
+            export PATH="/home/lewis/.local/bin:/home/lewis/.local/share/mise/installs/node/25.2.1/bin:$PATH"
+            BEAD_ID=$(bd ready 2>/dev/null | /usr/bin/grep -oE "Fire-Flow-[a-z0-9.]+" | head -1)
+            echo "Next bead: $BEAD_ID"
+            echo "$BEAD_ID"
+
+      - id: run_claude
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: Run Claude Code to work on the bead
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
+        timeout: PT90M
+        commands:
+          - |
+            cd {{ inputs.working_dir }}
+            # Set up writable HOME for Claude (Kestra mounts /home read-only)
+            export CLAUDE_HOME="/home/lewis/.kestra/claude-home"
+            mkdir -p "$CLAUDE_HOME"
+            cp /home/lewis/.kestra/claude.json "$CLAUDE_HOME/.claude.json" 2>/dev/null || true
+            export HOME="$CLAUDE_HOME"
+            export PATH="/home/lewis/.local/bin:/home/lewis/.local/share/mise/installs/node/25.2.1/bin:$PATH"
+
+            BEAD_ID=$(bd ready 2>/dev/null | /usr/bin/grep -oE "Fire-Flow-[a-z0-9.]+" | head -1)
+            if [ -z "$BEAD_ID" ]; then
+              echo "No beads found, skipping"
+              exit 0
+            fi
+
+            echo "Working on bead: $BEAD_ID"
+            bd update $BEAD_ID --status=in_progress
+
+            # Get bead details for Claude
+            BEAD_DETAILS=$(bd show $BEAD_ID)
+
+            # Run Claude with the bead task
+            claude --dangerously-skip-permissions --print "Work on this bead and complete it: $BEAD_ID\n\nDetails:\n$BEAD_DETAILS\n\nWhen done, close the bead with: bd close $BEAD_ID"
+
+            # Copy config back and sync
+            cp "$CLAUDE_HOME/.claude.json" /home/lewis/.kestra/claude.json 2>/dev/null || true
+            bd sync
+
+      - id: iteration_log
+        type: io.kestra.core.tasks.log.Log
+        message: "Completed iteration {{ taskrun.value }}"
+
+  - id: sync_final
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Final sync of beads
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - cd {{ inputs.working_dir }} && bd sync
+
+  - id: complete
+    type: io.kestra.core.tasks.log.Log
+    message: "Claude beads loop workflow completed"
+

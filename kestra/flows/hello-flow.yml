@@ -11,6 +11,8 @@ tasks:
   - id: run-go-app
     type: io.kestra.plugin.scripts.shell.Commands
     description: Execute the Fire-Flow Go application
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
     commands:
       - echo "Running Fire-Flow application..."
       - go version

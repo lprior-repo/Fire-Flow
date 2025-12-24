@@ -1,0 +1,219 @@
+id: agent-orchestrator
+namespace: fire.flow
+
+description: |
+  Unified AI agent orchestrator with:
+  - Beads task queue integration
+  - TCR (Test && Commit || Revert) guardrails
+  - Recursive stuck-agent escalation
+  - Centralized orchestration pattern
+
+  Simpler alternative to OpenHands/LangGraph.
+
+inputs:
+  - id: working_dir
+    type: STRING
+    description: Working directory for the project
+    defaults: /home/lewis/src/meal-planner
+
+  - id: max_beads
+    type: INT
+    description: Maximum beads to process in one run
+    defaults: 10
+
+  - id: max_fix_attempts
+    type: INT
+    description: Maximum fix attempts per bead before giving up
+    defaults: 5
+
+  - id: verify_command
+    type: STRING
+    description: Command to verify the work (build/test)
+    defaults: "gleam build && gleam test"
+
+variables:
+  home: /home/lewis
+  path: "/home/lewis/.local/bin:/home/lewis/.local/share/mise/installs/node/25.2.1/bin:/usr/local/bin:/usr/bin:/bin"
+
+tasks:
+  - id: start
+    type: io.kestra.core.tasks.log.Log
+    message: "🚀 Starting Agent Orchestrator in {{ inputs.working_dir }}"
+
+  - id: process_beads
+    type: io.kestra.plugin.core.flow.ForEach
+    values: "{{ range(1, inputs.max_beads) }}"
+    tasks:
+      # Step 1: Pick next bead
+      - id: pick_bead
+        type: io.kestra.plugin.scripts.shell.Commands
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
+        outputFiles:
+          - bead_id.txt
+          - bead_details.txt
+        commands:
+          - |
+            cd {{ inputs.working_dir }}
+            export HOME="{{ vars.home }}"
+            export PATH="{{ vars.path }}"
+
+            BEAD_ID=$(bd ready 2>/dev/null | grep -oE "[a-zA-Z]+-[a-z0-9]+" | head -1)
+
+            if [ -z "$BEAD_ID" ]; then
+              echo "NO_BEADS" > bead_id.txt
+              echo "No beads available" > bead_details.txt
+              exit 0
+            fi
+
+            echo "$BEAD_ID" > bead_id.txt
+            bd show "$BEAD_ID" > bead_details.txt
+            bd update "$BEAD_ID" --status=in_progress
+            echo "📋 Picked bead: $BEAD_ID"
+
+      # Step 2: Check if we have work
+      - id: check_work
+        type: io.kestra.plugin.core.flow.If
+        condition: "{{ read(outputs.pick_bead.outputFiles['bead_id.txt']) != 'NO_BEADS' }}"
+        then:
+          # Step 3: Run agent with verification loop
+          - id: agent_verify_loop
+            type: io.kestra.plugin.core.flow.ForEach
+            values: "{{ range(1, inputs.max_fix_attempts) }}"
+            tasks:
+              # Run the agent
+              - id: run_agent
+                type: io.kestra.plugin.scripts.shell.Commands
+                taskRunner:
+                  type: io.kestra.plugin.core.runner.Process
+                timeout: PT10M
+                commands:
+                  - |
+                    cd {{ inputs.working_dir }}
+                    export HOME="{{ vars.home }}"
+                    export PATH="{{ vars.path }}"
+
+                    BEAD_ID=$(cat {{ outputs.pick_bead.outputFiles['bead_id.txt'] }})
+                    BEAD_DETAILS=$(cat {{ outputs.pick_bead.outputFiles['bead_details.txt'] }})
+                    ATTEMPT={{ taskrun.value }}
+
+                    echo "🤖 Agent attempt $ATTEMPT for bead: $BEAD_ID"
+
+                    # Build prompt based on attempt number (escalation)
+                    if [ "$ATTEMPT" -ge 4 ]; then
+                      PROMPT="## CRITICAL: Attempt $ATTEMPT - Previous fixes failed
+
+                    Focus ONLY on fixing the build error. Do NOT implement new features.
+                    Read the exact error line, check imports, and make minimal fix.
+
+                    Bead: $BEAD_ID
+                    Details: $BEAD_DETAILS"
+                    elif [ "$ATTEMPT" -ge 2 ]; then
+                      PROMPT="## Attempt $ATTEMPT - Fix the build error first
+
+                    The previous attempt did not fix the issue. Read the error carefully.
+
+                    Bead: $BEAD_ID
+                    Details: $BEAD_DETAILS"
+                    else
+                      PROMPT="Complete this task:
+
+                    Bead: $BEAD_ID
+                    Details: $BEAD_DETAILS
+
+                    When done, run the build to verify your changes work."
+                    fi
+
+                    # Run Claude/OpenCode
+                    claude --dangerously-skip-permissions --print "$PROMPT" 2>&1 || true
+
+              # Verify the work
+              - id: verify
+                type: io.kestra.plugin.scripts.shell.Commands
+                taskRunner:
+                  type: io.kestra.plugin.core.runner.Process
+                timeout: PT5M
+                allowFailure: true
+                outputFiles:
+                  - verify_result.txt
+                commands:
+                  - |
+                    cd {{ inputs.working_dir }}
+                    export HOME="{{ vars.home }}"
+                    export PATH="{{ vars.path }}"
+
+                    echo "🔍 Verifying with: {{ inputs.verify_command }}"
+
+                    if {{ inputs.verify_command }}; then
+                      echo "PASS" > verify_result.txt
+                      echo "✅ Verification passed"
+                    else
+                      echo "FAIL" > verify_result.txt
+                      echo "❌ Verification failed"
+                    fi
+
+              # Check result and break or continue
+              - id: check_verify
+                type: io.kestra.plugin.core.flow.If
+                condition: "{{ read(outputs.verify.outputFiles['verify_result.txt']) == 'PASS' }}"
+                then:
+                  - id: success_log
+                    type: io.kestra.core.tasks.log.Log
+                    message: "✅ Verification passed on attempt {{ taskrun.value }}"
+                else:
+                  - id: revert_changes
+                    type: io.kestra.plugin.scripts.shell.Commands
+                    taskRunner:
+                      type: io.kestra.plugin.core.runner.Process
+                    commands:
+                      - |
+                        cd {{ inputs.working_dir }}
+                        export HOME="{{ vars.home }}"
+                        export PATH="{{ vars.path }}"
+
+                        echo "🔄 Reverting failed changes..."
+                        git checkout . 2>/dev/null || true
+
+          # Step 4: Close bead if successful
+          - id: close_bead
+            type: io.kestra.plugin.scripts.shell.Commands
+            taskRunner:
+              type: io.kestra.plugin.core.runner.Process
+            commands:
+              - |
+                cd {{ inputs.working_dir }}
+                export HOME="{{ vars.home }}"
+                export PATH="{{ vars.path }}"
+
+                BEAD_ID=$(cat {{ outputs.pick_bead.outputFiles['bead_id.txt'] }})
+
+                # Check if verification ultimately passed
+                if {{ inputs.verify_command }} 2>/dev/null; then
+                  echo "✅ Closing bead: $BEAD_ID"
+                  bd close "$BEAD_ID" --reason="Completed by agent-orchestrator"
+                  git add -A && git commit -m "Complete $BEAD_ID" || true
+                else
+                  echo "⚠️ Bead not completed after max attempts: $BEAD_ID"
+                  bd update "$BEAD_ID" --status=open
+                fi
+
+        else:
+          - id: no_work_log
+            type: io.kestra.core.tasks.log.Log
+            message: "📭 No beads available, ending loop"
+
+  - id: final_sync
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - |
+        cd {{ inputs.working_dir }}
+        export HOME="{{ vars.home }}"
+        export PATH="{{ vars.path }}"
+        bd sync --from-main 2>/dev/null || true
+        echo "🏁 Agent orchestrator completed"
+
+  - id: complete
+    type: io.kestra.core.tasks.log.Log
+    message: "🏁 Agent Orchestrator workflow finished"

@@ -16,29 +16,37 @@ tasks:
   - id: dependencies
     type: io.kestra.plugin.scripts.shell.Commands
     description: Download Go dependencies
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
     commands:
-      - go mod download
-      - go mod verify
+      - cd /home/lewis/src/Fire-Flow && go mod download
+      - cd /home/lewis/src/Fire-Flow && go mod verify
 
   - id: build
     type: io.kestra.plugin.scripts.shell.Commands
     description: Build the Fire-Flow application
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
     commands:
-      - mkdir -p bin
-      - go build -o bin/fire-flow ./cmd/fire-flow
-      - ls -lh bin/
+      - cd /home/lewis/src/Fire-Flow && mkdir -p bin
+      - cd /home/lewis/src/Fire-Flow && go build -o bin/fire-flow ./cmd/fire-flow
+      - ls -lh /home/lewis/src/Fire-Flow/bin/
 
   - id: test
     type: io.kestra.plugin.scripts.shell.Commands
     description: Run Go tests
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
     commands:
-      - go test -v ./...
+      - cd /home/lewis/src/Fire-Flow && go test -v ./...
 
   - id: run-app
     type: io.kestra.plugin.scripts.shell.Commands
     description: Execute the built application
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
     commands:
-      - ./bin/fire-flow
+      - /home/lewis/src/Fire-Flow/bin/fire-flow
 
   - id: complete
     type: io.kestra.core.tasks.log.Log
