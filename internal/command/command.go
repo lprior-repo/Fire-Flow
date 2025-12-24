@@ -32,14 +32,16 @@ func (f *CommandFactory) NewCommand(name string) (Command, error) {
 		return &InitCommand{}, nil
 	case "status":
 		return &StatusCommand{}, nil
-	case "watch":
-		return &WatchCommand{}, nil
 	case "gate":
 		return &GateCommand{}, nil
 	case "tdd-gate":
 		return &TddGateCommand{}, nil
 	case "run-tests":
 		return &RunTestsCommand{}, nil
+	case "commit":
+		return &CommitCommand{}, nil
+	case "revert":
+		return &RevertCommand{}, nil
 	default:
 		return nil, fmt.Errorf("unknown command: %s", name)
 	}

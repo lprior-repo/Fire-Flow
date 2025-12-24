@@ -1,7 +1,6 @@
 package command
 
 import (
-	"context"
 	"fmt"
 	"os/exec"
 	"strings"
