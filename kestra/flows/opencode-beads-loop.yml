@@ -43,12 +43,19 @@ tasks:
         git stash pop 2>/dev/null || true
 
         echo "=== Syncing beads database ==="
-        # Export from source and import to working copy
-        bd export --dir /home/lewis/src/Fire-Flow/.beads > /tmp/beads-sync.jsonl 2>/dev/null
-        bd import /tmp/beads-sync.jsonl 2>/dev/null || true
-        rm -f /tmp/beads-sync.jsonl
+        # Copy JSONL files from source (they contain the beads data)
+        cp /home/lewis/src/Fire-Flow/.beads/*.jsonl .beads/ 2>/dev/null || true
+
+        # Reinitialize db from JSONL if needed
+        if [ ! -f .beads/beads.db ] || [ .beads/completion-summary.jsonl -nt .beads/beads.db ]; then
+          rm -f .beads/beads.db
+          bd init --prefix Fire-Flow 2>/dev/null || true
+          bd import .beads/completion-summary.jsonl 2>/dev/null || true
+        fi
 
         echo "=== Ready beads ==="
+        READY_COUNT=$(bd ready 2>/dev/null | /usr/bin/grep -c "Fire-Flow" || echo "0")
+        echo "Found $READY_COUNT ready beads"
         bd ready 2>/dev/null | head -5 || echo "No beads found"
 
   - id: beads_loop
