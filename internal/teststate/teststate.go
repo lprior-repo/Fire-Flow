@@ -29,10 +29,10 @@ func NewTestStateDetector() *TestStateDetector {
 // Returns a TestResult struct with details about test execution
 func (t *TestStateDetector) ParseGoTestOutput(output string) (*TestResult, error) {
 	result := &TestResult{
-		Output:     output,
+		Output:      output,
 		FailedTests: []string{},
 	}
-	
+
 	// Parse go test -json output
 	lines := strings.Split(output, "\n")
 	for _, line := range lines {
@@ -43,7 +43,7 @@ func (t *TestStateDetector) ParseGoTestOutput(output string) (*TestResult, error
 		}
 
 		// Parse JSON line for test events
-		var event map[string]interface{}
+		var event map[string]any
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			// Skip lines that aren't valid JSON
 			continue
@@ -60,10 +60,10 @@ func (t *TestStateDetector) ParseGoTestOutput(output string) (*TestResult, error
 			result.FailedTests = append(result.FailedTests, testName)
 		}
 	}
-	
+
 	// If we found any failures, tests didn't pass
 	result.Passed = len(result.FailedTests) == 0
-	
+
 	return result, nil
 }
 
@@ -82,7 +82,7 @@ func (t *TestStateDetector) ExtractFailedTests(output string) []string {
 		}
 
 		// Parse JSON line for test events
-		var event map[string]interface{}
+		var event map[string]any
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			// Skip lines that aren't valid JSON
 			continue
@@ -109,7 +109,7 @@ func (t *TestStateDetector) IsTestPassing(output string) (bool, []string, error)
 	if err != nil {
 		return false, nil, err
 	}
-	
+
 	return result.Passed, result.FailedTests, nil
 }
 

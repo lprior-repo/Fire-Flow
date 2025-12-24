@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -8,8 +9,21 @@ import (
 )
 
 func TestGetTCRPath(t *testing.T) {
-	expected := "/home/lewis/.opencode/tcr"
+	// Save and restore original env
+	originalRoot := os.Getenv("FIRE_FLOW_ROOT")
+	defer os.Setenv("FIRE_FLOW_ROOT", originalRoot)
+
+	// Test with explicit root
+	os.Setenv("FIRE_FLOW_ROOT", "/test/project")
+	expected := "/test/project/.opencode/tcr"
 	actual := GetTCRPath()
+	assert.Equal(t, expected, actual)
+
+	// Test with no env (uses cwd)
+	os.Unsetenv("FIRE_FLOW_ROOT")
+	cwd, _ := os.Getwd()
+	expected = filepath.Join(cwd, TCRBasePath)
+	actual = GetTCRPath()
 	assert.Equal(t, expected, actual)
 }
 

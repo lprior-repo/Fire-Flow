@@ -129,3 +129,129 @@ func TestEnforcerState_IsRed_Green(t *testing.T) {
 		assert.True(t, state.IsGreen())
 	})
 }
+
+func TestEnforcerState_StatePersistenceAcrossRestarts(t *testing.T) {
+	// Test that state survives across multiple load/save cycles
+	tmpDir := t.TempDir()
+	stateFile := filepath.Join(tmpDir, "state.json")
+
+	// Create initial state
+	initialState := &State{
+		Mode:           "both",
+		RevertStreak:   3,
+		FailingTests:   []string{"TestA", "TestB"},
+		LastCommitTime: time.Now().Round(time.Second),
+	}
+
+	// Save initial state
+	err := initialState.SaveToFile(stateFile)
+	require.NoError(t, err)
+
+	// Load and verify
+	loadedState1, err := LoadStateFromFile(stateFile)
+	require.NoError(t, err)
+	assert.Equal(t, initialState.Mode, loadedState1.Mode)
+	assert.Equal(t, initialState.RevertStreak, loadedState1.RevertStreak)
+	assert.Equal(t, initialState.FailingTests, loadedState1.FailingTests)
+	assert.Equal(t, initialState.LastCommitTime.Unix(), loadedState1.LastCommitTime.Unix())
+
+	// Modify loaded state and save again
+	loadedState1.RevertStreak = 5
+	loadedState1.FailingTests = append(loadedState1.FailingTests, "TestC")
+	err = loadedState1.SaveToFile(stateFile)
+	require.NoError(t, err)
+
+	// Load again to verify persistence
+	loadedState2, err := LoadStateFromFile(stateFile)
+	require.NoError(t, err)
+	assert.Equal(t, 5, loadedState2.RevertStreak)
+	assert.Equal(t, []string{"TestA", "TestB", "TestC"}, loadedState2.FailingTests)
+}
+
+func TestEnforcerState_StateConcurrentAccess(t *testing.T) {
+	// Test that state operations work correctly with concurrent access patterns
+	t.Parallel() // Mark test as parallel
+
+	tmpDir := t.TempDir()
+	stateFile := filepath.Join(tmpDir, "concurrent_state.json")
+
+	// Create initial state
+	state := &State{
+		Mode:           "both",
+		RevertStreak:   0,
+		FailingTests:   []string{},
+		LastCommitTime: time.Now(),
+	}
+
+	// Save state to file
+	err := state.SaveToFile(stateFile)
+	require.NoError(t, err)
+
+	// Test that loading works correctly
+	loadedState, err := LoadStateFromFile(stateFile)
+	require.NoError(t, err)
+
+	// Verify properties
+	assert.Equal(t, "both", loadedState.Mode)
+	assert.Equal(t, 0, loadedState.RevertStreak)
+	assert.Empty(t, loadedState.FailingTests)
+
+	// Test modifying state
+	loadedState.IncrementRevertStreak()
+	loadedState.SetFailingTests([]string{"Test1", "Test2"})
+
+	// Verify changes
+	assert.Equal(t, 1, loadedState.RevertStreak)
+	assert.Equal(t, []string{"Test1", "Test2"}, loadedState.FailingTests)
+
+	// Save modified state
+	err = loadedState.SaveToFile(stateFile)
+	require.NoError(t, err)
+
+	// Load again to verify persistence
+	finalState, err := LoadStateFromFile(stateFile)
+	require.NoError(t, err)
+	assert.Equal(t, 1, finalState.RevertStreak)
+	assert.Equal(t, []string{"Test1", "Test2"}, finalState.FailingTests)
+}
+
+func TestEnforcerState_StateWithDifferentTestScenarios(t *testing.T) {
+	// Test various test scenarios to make sure the state behavior is consistent
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	stateFile := filepath.Join(tmpDir, "scenario_state.json")
+
+	// Test 1: Empty state (should load default)
+	loaded1, err := LoadStateFromFile(stateFile)
+	require.NoError(t, err)
+	assert.Equal(t, "both", loaded1.Mode)
+	assert.Equal(t, 0, loaded1.RevertStreak)
+	assert.Empty(t, loaded1.FailingTests)
+	assert.False(t, loaded1.IsRed())
+	assert.True(t, loaded1.IsGreen())
+
+	// Test 2: State with failing tests
+	state2 := &State{
+		FailingTests: []string{"TestA", "TestB"},
+	}
+	err = state2.SaveToFile(stateFile)
+	require.NoError(t, err)
+
+	loaded2, err := LoadStateFromFile(stateFile)
+	require.NoError(t, err)
+	assert.True(t, loaded2.IsRed())
+	assert.False(t, loaded2.IsGreen())
+
+	// Test 3: State with single failing test
+	state3 := &State{
+		FailingTests: []string{"SingleTest"},
+	}
+	err = state3.SaveToFile(stateFile)
+	require.NoError(t, err)
+
+	loaded3, err := LoadStateFromFile(stateFile)
+	require.NoError(t, err)
+	assert.True(t, loaded3.IsRed())
+	assert.False(t, loaded3.IsGreen())
+}

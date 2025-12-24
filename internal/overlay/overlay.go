@@ -8,14 +8,14 @@ import (
 
 // OverlayManager handles overlay operations and provides a high-level interface
 type OverlayManager struct {
-	fakeMounter  *FakeMounter
+	fakeMounter   *FakeMounter
 	kernelMounter *KernelMounter
 }
 
 // NewOverlayManager creates a new overlay manager
 func NewOverlayManager() *OverlayManager {
 	return &OverlayManager{
-		fakeMounter:  NewFakeMounter(),
+		fakeMounter:   NewFakeMounter(),
 		kernelMounter: NewKernelMounter(),
 	}
 }
@@ -152,7 +152,7 @@ func (om *OverlayManager) FormatMountInfo(mount *OverlayMount) string {
 	if mount == nil {
 		return "No mount information"
 	}
-	
+
 	return fmt.Sprintf("Mount Info:\n"+
 		"  LowerDir: %s\n"+
 		"  UpperDir: %s\n"+

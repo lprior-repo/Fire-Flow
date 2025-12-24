@@ -63,15 +63,15 @@ func main() {
 func runMutationTest(packagePath string, results chan<- string) {
 	// Build the command
 	cmd := exec.Command("go-mutest", "-config=mutation-test-config.yaml", packagePath)
-	
+
 	// Capture output
 	output, err := cmd.CombinedOutput()
-	
+
 	// Format result
 	result := fmt.Sprintf("Package %s: %s", packagePath, strings.TrimSpace(string(output)))
 	if err != nil {
 		result = fmt.Sprintf("ERROR: Package %s: %v - %s", packagePath, err, strings.TrimSpace(string(output)))
 	}
-	
+
 	results <- result
 }

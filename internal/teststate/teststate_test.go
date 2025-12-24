@@ -138,3 +138,49 @@ invalid json line
 	assert.Contains(t, result.FailedTests, "TestExample")
 	assert.Len(t, result.FailedTests, 1)
 }
+
+func TestTestStateDetector_ParseGoTestOutput_SingleFailure(t *testing.T) {
+	// Test with a single failure
+	output := `{"Action":"run","Test":"TestSingleFailure","Package":"example"}
+{"Action":"fail","Test":"TestSingleFailure","Package":"example","Time":1000000000}`
+
+	detector := NewTestStateDetector()
+	result, err := detector.ParseGoTestOutput(output)
+
+	assert.NoError(t, err)
+	assert.False(t, result.Passed)
+	assert.Contains(t, result.FailedTests, "TestSingleFailure")
+	assert.Len(t, result.FailedTests, 1)
+}
+
+func TestTestStateDetector_ParseGoTestOutput_NoActionField(t *testing.T) {
+	// Test with JSON that doesn't have Action field (should be ignored)
+	output := `{"Test":"TestNoAction","Package":"example"}
+{"Action":"fail","Test":"TestNoAction","Package":"example","Time":1000000000}`
+
+	detector := NewTestStateDetector()
+	result, err := detector.ParseGoTestOutput(output)
+
+	assert.NoError(t, err)
+	assert.False(t, result.Passed)
+	assert.Contains(t, result.FailedTests, "TestNoAction")
+	assert.Len(t, result.FailedTests, 1)
+}
+
+func TestTestStateDetector_ParseGoTestOutput_WhitespaceOnly(t *testing.T) {
+	// Test with whitespace-only lines
+	output := `{"Action":"run","Test":"TestExample","Package":"example"}
+   
+   {"Action":"fail","Test":"TestExample","Package":"example","Time":1000000000}
+   
+
+`
+
+	detector := NewTestStateDetector()
+	result, err := detector.ParseGoTestOutput(output)
+
+	assert.NoError(t, err)
+	assert.False(t, result.Passed)
+	assert.Contains(t, result.FailedTests, "TestExample")
+	assert.Len(t, result.FailedTests, 1)
+}

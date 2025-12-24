@@ -43,7 +43,10 @@ The Kestra workflow returns a result.json that contains information about the ac
   "action": "BLOCKED|ALLOWED|COMMITTED|REVERTED",
   "reason": "...",
   "streak": 0,
-  "output": "..."
+  "output": "...",
+  "file_path": "...",
+  "timestamp": "...",
+  "success": true|false
 }
 ```
 

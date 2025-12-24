@@ -30,6 +30,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// For commit command, parse additional arguments
+	commitCmd, ok := cmd.(*command.CommitCommand)
+	if ok && len(os.Args) > 2 {
+		commitCmd.Message = os.Args[2]
+	}
+
 	// Execute command
 	if err := cmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

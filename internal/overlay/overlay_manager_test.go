@@ -93,7 +93,7 @@ func TestOverlayManager_CreateTempDirs_Success(t *testing.T) {
 
 	// Assert
 	assert.NoError(t, err)
-	
+
 	// Verify directories were created
 	upperInfo, err := os.Stat(config.UpperDir)
 	assert.NoError(t, err)
@@ -118,7 +118,7 @@ func TestOverlayManager_CleanupTempDirs_Success(t *testing.T) {
 	upperDir := filepath.Join(tempDir, "upper")
 	workDir := filepath.Join(tempDir, "work")
 	mergedDir := filepath.Join(tempDir, "merged")
-	
+
 	for _, dir := range []string{upperDir, workDir, mergedDir} {
 		err = os.MkdirAll(dir, 0755)
 		assert.NoError(t, err)
@@ -140,16 +140,16 @@ func TestOverlayManager_CleanupTempDirs_Success(t *testing.T) {
 
 	// Assert
 	assert.NoError(t, err)
-	
+
 	// Verify directories were cleaned up
 	_, err = os.Stat(upperDir)
 	assert.Error(t, err)
 	assert.True(t, os.IsNotExist(err))
-	
+
 	_, err = os.Stat(workDir)
 	assert.Error(t, err)
 	assert.True(t, os.IsNotExist(err))
-	
+
 	_, err = os.Stat(mergedDir)
 	assert.Error(t, err)
 	assert.True(t, os.IsNotExist(err))
@@ -157,7 +157,7 @@ func TestOverlayManager_CleanupTempDirs_Success(t *testing.T) {
 
 func TestOverlayManager_GetOverlayMountPath(t *testing.T) {
 	manager := NewOverlayManager()
-	
+
 	// Create a mock mount
 	mockMount := &OverlayMount{
 		Config: MountConfig{
@@ -174,7 +174,7 @@ func TestOverlayManager_GetOverlayMountPath(t *testing.T) {
 
 func TestOverlayManager_GetOverlayMountPath_Nil(t *testing.T) {
 	manager := NewOverlayManager()
-	
+
 	// Act
 	path := manager.GetOverlayMountPath(nil)
 
@@ -184,7 +184,7 @@ func TestOverlayManager_GetOverlayMountPath_Nil(t *testing.T) {
 
 func TestOverlayManager_GetOverlayUpperDir(t *testing.T) {
 	manager := NewOverlayManager()
-	
+
 	// Create a mock mount
 	mockMount := &OverlayMount{
 		Config: MountConfig{
@@ -201,7 +201,7 @@ func TestOverlayManager_GetOverlayUpperDir(t *testing.T) {
 
 func TestOverlayManager_GetOverlayUpperDir_Nil(t *testing.T) {
 	manager := NewOverlayManager()
-	
+
 	// Act
 	path := manager.GetOverlayUpperDir(nil)
 
@@ -211,7 +211,7 @@ func TestOverlayManager_GetOverlayUpperDir_Nil(t *testing.T) {
 
 func TestOverlayManager_GetOverlayWorkDir(t *testing.T) {
 	manager := NewOverlayManager()
-	
+
 	// Create a mock mount
 	mockMount := &OverlayMount{
 		Config: MountConfig{
@@ -228,7 +228,7 @@ func TestOverlayManager_GetOverlayWorkDir(t *testing.T) {
 
 func TestOverlayManager_GetOverlayWorkDir_Nil(t *testing.T) {
 	manager := NewOverlayManager()
-	
+
 	// Act
 	path := manager.GetOverlayWorkDir(nil)
 
@@ -238,7 +238,7 @@ func TestOverlayManager_GetOverlayWorkDir_Nil(t *testing.T) {
 
 func TestOverlayManager_GetOverlayLowerDir(t *testing.T) {
 	manager := NewOverlayManager()
-	
+
 	// Create a mock mount
 	mockMount := &OverlayMount{
 		Config: MountConfig{
@@ -255,7 +255,7 @@ func TestOverlayManager_GetOverlayLowerDir(t *testing.T) {
 
 func TestOverlayManager_GetOverlayLowerDir_Nil(t *testing.T) {
 	manager := NewOverlayManager()
-	
+
 	// Act
 	path := manager.GetOverlayLowerDir(nil)
 
@@ -265,7 +265,7 @@ func TestOverlayManager_GetOverlayLowerDir_Nil(t *testing.T) {
 
 func TestOverlayManager_FormatMountInfo(t *testing.T) {
 	manager := NewOverlayManager()
-	
+
 	// Create a mock mount
 	mockMount := &OverlayMount{
 		Config: MountConfig{
@@ -292,7 +292,7 @@ func TestOverlayManager_FormatMountInfo(t *testing.T) {
 
 func TestOverlayManager_FormatMountInfo_Nil(t *testing.T) {
 	manager := NewOverlayManager()
-	
+
 	// Act
 	info := manager.FormatMountInfo(nil)
 

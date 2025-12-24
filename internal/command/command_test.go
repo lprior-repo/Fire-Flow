@@ -19,10 +19,9 @@ func TestCommandInterface(t *testing.T) {
 			t.Errorf("Failed to create command %s: %v", cmdName, err)
 		}
 
-		// Verify it implements Command interface
-		_, ok := cmd.(Command)
-		if !ok {
-			t.Errorf("Command %s does not implement Command interface", cmdName)
+		// cmd is already of type Command from NewCommand return type
+		if cmd == nil {
+			t.Errorf("Command %s is nil", cmdName)
 		}
 	}
 }
@@ -61,8 +60,17 @@ func TestInitCommand_Execute(t *testing.T) {
 	// Create a test that simply verifies the InitCommand can be instantiated
 	// and that it implements the Command interface
 	initCmd := &InitCommand{}
-	
+
 	// Verify it implements Command interface
 	_, ok := interface{}(initCmd).(Command)
 	assert.True(t, ok, "InitCommand should implement Command interface")
+}
+
+func TestRunTestsCommandInterface(t *testing.T) {
+	// Test that RunTestsCommand implements the Command interface
+	runTestsCmd := &RunTestsCommand{}
+
+	// Verify it implements Command interface
+	_, ok := interface{}(runTestsCmd).(Command)
+	assert.True(t, ok, "RunTestsCommand should implement Command interface")
 }

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/lprior-repo/Fire-Flow/internal/utils"
 )
@@ -18,6 +17,12 @@ type CommitCommand struct {
 // Execute runs the commit command to stage changes, commit them, and update state
 // It executes: git add ., git commit -m <message>, and updates the state file
 func (cmd *CommitCommand) Execute() error {
+	// If no message provided, use a default message
+	message := cmd.Message
+	if message == "" {
+		message = "WIP"
+	}
+
 	// Execute git add .
 	fmt.Println("Running: git add .")
 	addCmd := exec.Command("git", "add", ".")
@@ -28,11 +33,11 @@ func (cmd *CommitCommand) Execute() error {
 	fmt.Println("git add . completed successfully")
 
 	// Execute git commit -m <message>
-	fmt.Printf("Running: git commit -m \"%s\"\n", cmd.Message)
-	commitCmd := exec.Command("git", "commit", "-m", cmd.Message)
+	fmt.Printf("Running: git commit -m \"%s\"\n", message)
+	commitCmd := exec.Command("git", "commit", "-m", message)
 	commitOutput, err := commitCmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to execute 'git commit -m \"%s\"': %w\nOutput: %s", cmd.Message, err, strings.TrimSpace(string(commitOutput)))
+		return fmt.Errorf("failed to execute 'git commit -m \"%s\"': %w\nOutput: %s", message, err, strings.TrimSpace(string(commitOutput)))
 	}
 	fmt.Println("git commit completed successfully")
 
@@ -42,8 +47,8 @@ func (cmd *CommitCommand) Execute() error {
 		return fmt.Errorf("failed to load state: %w", err)
 	}
 
-	// Update the last commit time
-	state.LastCommitTime = time.Now()
+	// Record test result as passed (commit implies tests passed)
+	state.SetTestResult(true)
 
 	// Save updated state
 	statePath := utils.GetStatePath()
@@ -52,7 +57,7 @@ func (cmd *CommitCommand) Execute() error {
 	}
 
 	fmt.Println("State updated successfully")
-	fmt.Printf("Committed with message: \"%s\"\n", cmd.Message)
+	fmt.Printf("Committed with message: \"%s\"\n", message)
 
 	return nil
 }

@@ -42,6 +42,8 @@ func (f *CommandFactory) NewCommand(name string) (Command, error) {
 		return &CommitCommand{}, nil
 	case "revert":
 		return &RevertCommand{}, nil
+	case "watch":
+		return &WatchCommand{}, nil
 	default:
 		return nil, fmt.Errorf("unknown command: %s", name)
 	}
@@ -94,7 +96,7 @@ func (cmd *InitCommand) Execute() error {
 type StatusCommand struct{}
 
 // Execute runs the status command to show current state
-// It prints information about the current state including test status and commit history
+// It prints information about the current state including overlay and test status
 func (cmd *StatusCommand) Execute() error {
 	// Load state
 	state, err := utils.LoadStateWithValidation()
@@ -103,10 +105,31 @@ func (cmd *StatusCommand) Execute() error {
 	}
 
 	// Print status information
-	fmt.Printf("State: %s\n", utils.GetStateName(state))
-	fmt.Printf("RevertStreak: %d\n", state.RevertStreak)
-	fmt.Printf("LastCommit: %s\n", utils.FormatTime(state.LastCommitTime))
-	fmt.Printf("FailingTests: %v\n", state.FailingTests)
+	fmt.Printf("Version: %s\n", state.Version)
+	fmt.Printf("Test State: %s\n", utils.GetStateName(state))
+	fmt.Printf("Last Test Result: %v\n", state.LastTestResult)
+	if !state.LastTestTime.IsZero() {
+		fmt.Printf("Last Test Time: %s\n", utils.FormatTime(state.LastTestTime))
+	}
+
+	// Print overlay status
+	fmt.Printf("\nOverlay Status:\n")
+	fmt.Printf("  Active: %v\n", state.OverlayActive)
+	if state.OverlayActive {
+		fmt.Printf("  Mount Path: %s\n", state.OverlayMountPath)
+		fmt.Printf("  Upper Dir: %s\n", state.OverlayUpperDir)
+		fmt.Printf("  Work Dir: %s\n", state.OverlayWorkDir)
+		fmt.Printf("  Merged Dir: %s\n", state.OverlayMergedDir)
+		fmt.Printf("  Mounted At: %s\n", utils.FormatTime(state.OverlayMountedAt))
+	}
+
+	// Print active mounts
+	if len(state.ActiveMounts) > 0 {
+		fmt.Printf("\nActive Mounts: %d\n", len(state.ActiveMounts))
+		for i, m := range state.ActiveMounts {
+			fmt.Printf("  [%d] %s (PID: %d)\n", i+1, m.MergedDir, m.PID)
+		}
+	}
 
 	return nil
 }
@@ -168,7 +191,7 @@ func (cmd *TddGateCommand) Execute() error {
 	}
 
 	// If tests are currently passing (GREEN state), block implementation
-	if state.IsGreen() {
+	if state.HasPassedTests() {
 		return fmt.Errorf("TDD gate blocked: Tests are currently passing (GREEN state). Implementation is blocked until tests fail (RED state). Run tests to see current state.")
 	}
 
@@ -184,7 +207,8 @@ func loadConfig() (*config.Config, error) {
 
 	// Set default values
 	v.SetDefault("testCommand", "go test -json ./...")
-	v.SetDefault("testPatterns", []string{"_test\\.go$"})
+	// Use glob patterns, not regex
+	v.SetDefault("testPatterns", []string{"*_test.go"})
 	v.SetDefault("protectedPaths", []string{"opencode.json", ".fire-flow"})
 	v.SetDefault("timeout", 30)
 	v.SetDefault("autoCommitMsg", "WIP")
@@ -292,7 +316,7 @@ func extractFailedTests(output string) []string {
 		}
 
 		// Parse JSON line for test events
-		var event map[string]interface{}
+		var event map[string]any
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			// Skip lines that aren't valid JSON
 			continue

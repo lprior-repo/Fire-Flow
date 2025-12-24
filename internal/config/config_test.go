@@ -14,11 +14,11 @@ func TestConfig_LoadFromFile_DefaultsApplied(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yml")
 
-	// Write minimal config
+	// Write minimal config - note: testPatterns supports glob patterns, not regex
 	yamlContent := `
 testCommand: "go test -json ./..."
 testPatterns:
-  - "_test\\.go$"
+  - "*_test.go"
 protectedPaths:
   - "opencode.json"
   - ".opencode/tcr"
@@ -33,7 +33,7 @@ protectedPaths:
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	assert.Equal(t, "go test -json ./...", cfg.TestCommand)
-	assert.Equal(t, []string{"_test\\.go$"}, cfg.TestPatterns)
+	assert.Equal(t, []string{"*_test.go"}, cfg.TestPatterns)
 	assert.Equal(t, []string{"opencode.json", ".opencode/tcr"}, cfg.ProtectedPaths)
 	assert.Equal(t, 30, cfg.Timeout, "Default timeout should be 30 seconds")
 	assert.Equal(t, "WIP", cfg.AutoCommitMsg, "Default commit message should be WIP")
@@ -47,10 +47,12 @@ func TestConfig_LoadFromFile_CustomTimeout(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yml")
 
+	// Note: testPatterns uses glob patterns (filepath.Match), not regex
 	yamlContent := `
 testCommand: "npm test"
 testPatterns:
-  - "\\.(test|spec)\\.ts$"
+  - "*.test.ts"
+  - "*.spec.ts"
 timeout: 60
 autoCommitMsg: "feat: auto-commit"
 overlayWorkDir: "/custom/overlay/work"
@@ -97,7 +99,8 @@ func TestConfig_DefaultConfig(t *testing.T) {
 
 	// ASSERT
 	assert.Equal(t, "go test -json ./...", cfg.TestCommand)
-	assert.Equal(t, []string{"_test\\.go$"}, cfg.TestPatterns)
+	// TestPatterns uses glob patterns (filepath.Match semantics), not regex
+	assert.Equal(t, []string{"*_test.go"}, cfg.TestPatterns)
 	assert.Equal(t, []string{"opencode.json", ".opencode/tcr"}, cfg.ProtectedPaths)
 	assert.Equal(t, 30, cfg.Timeout)
 	assert.Equal(t, "WIP", cfg.AutoCommitMsg)

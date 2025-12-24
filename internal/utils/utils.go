@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"os"
 	"path/filepath"
 	"time"
 
@@ -8,9 +9,18 @@ import (
 	"github.com/lprior-repo/Fire-Flow/internal/state"
 )
 
-// GetTCRPath returns the TCR path
+// TCRBasePath is the base directory name for TCR state and config
+const TCRBasePath = ".opencode/tcr"
+
+// GetTCRPath returns the TCR path.
+// It uses the FIRE_FLOW_ROOT environment variable if set, otherwise uses the current working directory.
 func GetTCRPath() string {
-	return "/home/lewis/.opencode/tcr"
+	root := os.Getenv("FIRE_FLOW_ROOT")
+	if root == "" {
+		// Fall back to current working directory
+		root, _ = os.Getwd()
+	}
+	return filepath.Join(root, TCRBasePath)
 }
 
 // GetConfigPath returns the config file path
@@ -42,17 +52,17 @@ func LoadStateWithValidation() (*state.State, error) {
 		return nil, err
 	}
 
-	// Ensure the failingTests array is properly initialized
-	if st.FailingTests == nil {
-		st.FailingTests = []string{}
+	// Ensure the ActiveMounts array is properly initialized
+	if st.ActiveMounts == nil {
+		st.ActiveMounts = []state.ActiveMount{}
 	}
 
 	return st, nil
 }
 
-// GetStateName returns a human-readable state name
-func GetStateName(state *state.State) string {
-	if state != nil && state.IsRed() {
+// GetStateName returns a human-readable state name based on test results
+func GetStateName(s *state.State) string {
+	if s != nil && !s.HasPassedTests() {
 		return "RED"
 	}
 	return "GREEN"

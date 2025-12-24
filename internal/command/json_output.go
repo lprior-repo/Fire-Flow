@@ -13,19 +13,19 @@ import (
 type JSONOutput struct {
 	// Version of the output format
 	Version string `json:"version"`
-	
+
 	// Command that was executed
 	Command string `json:"command"`
-	
+
 	// Success status of the operation
 	Success bool `json:"success"`
-	
+
 	// Error message if operation failed
 	Error string `json:"error,omitempty"`
-	
+
 	// Test results if applicable
 	TestResult *teststate.TestResult `json:"testResult,omitempty"`
-	
+
 	// Timestamp of the operation
 	Timestamp string `json:"timestamp"`
 }
@@ -46,7 +46,7 @@ func OutputTestResultAsJSON(result *teststate.TestResult, command string) error 
 		TestResult: result,
 		Timestamp:  fmt.Sprintf("%d", time.Now().Unix()),
 	}
-	
+
 	return OutputJSON(output)
 }
 
@@ -59,6 +59,6 @@ func OutputErrorAsJSON(err error, command string) error {
 		Error:     err.Error(),
 		Timestamp: fmt.Sprintf("%d", time.Now().Unix()),
 	}
-	
+
 	return OutputJSON(output)
 }

@@ -15,6 +15,21 @@ func TestRevertCommand_Execute(t *testing.T) {
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
+	// Set FIRE_FLOW_ROOT to the temp directory
+	oldRoot := os.Getenv("FIRE_FLOW_ROOT")
+	os.Setenv("FIRE_FLOW_ROOT", tempDir)
+	defer os.Setenv("FIRE_FLOW_ROOT", oldRoot)
+
+	// Create the .opencode/tcr directory structure
+	tcrDir := filepath.Join(tempDir, ".opencode", "tcr")
+	err = os.MkdirAll(tcrDir, 0755)
+	assert.NoError(t, err)
+
+	// Create initial state file
+	stateFile := filepath.Join(tcrDir, "state.json")
+	err = os.WriteFile(stateFile, []byte(`{"mode":"both","revertStreak":0,"failingTests":[],"lastCommitTime":"2025-01-01T00:00:00Z"}`), 0644)
+	assert.NoError(t, err)
+
 	// Change to temp directory
 	oldDir, err := os.Getwd()
 	assert.NoError(t, err)

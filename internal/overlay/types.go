@@ -27,8 +27,8 @@ type MountConfig struct {
 // OverlayMount represents an active overlay filesystem
 type OverlayMount struct {
 	Config    MountConfig
-	MountedAt time.Time  // When this overlay was mounted
-	PID       int        // Process ID that mounted this
+	MountedAt time.Time // When this overlay was mounted
+	PID       int       // Process ID that mounted this
 	// Internal state can be added as needed
 }
 

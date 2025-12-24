@@ -1,11 +1,22 @@
 # Fire-Flow
 
-Fire-Flow is a workflow orchestration service built with Go 1.24+ and Kestra.
+Fire-Flow is a TCR (Test && Commit || Revert) enforcement tool built with Go 1.25+ and Kestra workflow orchestration. It enforces TDD (Test-Driven Development) practices through filesystem-level protection using OverlayFS.
+
+## Features
+
+- **CLI Tool**: Complete command-line interface for TCR workflow enforcement
+- **TDD Gate**: Blocks implementation changes until tests fail (RED state)
+- **Test Execution**: Runs tests with timeout handling and JSON output parsing
+- **Automatic Commit/Revert**: Commits changes if tests pass, reverts if they fail
+- **Kestra Integration**: Workflow orchestration for CI/CD pipelines
+- **OverlayFS Support**: Filesystem-level isolation for safe experimentation
+- **OpenCode Integration**: Webhook-based integration with AI coding agents
 
 ## Prerequisites
 
-- Go 1.24 or higher
-- Docker and Docker Compose
+- Go 1.25 or higher
+- Linux with OverlayFS support (for `watch` command)
+- Docker and Docker Compose (optional, for Kestra)
 - Task (go-task) - Install from https://taskfile.dev/
   ```bash
   # macOS
@@ -23,19 +34,22 @@ Fire-Flow is a workflow orchestration service built with Go 1.24+ and Kestra.
 ```
 Fire-Flow/
 ├── cmd/
-│   └── fire-flow/       # Main application entry point
-├── internal/            # Private application code
-│   ├── config/         # Configuration management
-│   ├── overlay/        # OverlayFS implementation for TDD enforcement
-│   ├── state/          # State persistence
-│   └── version/        # Version information
+│   └── fire-flow/        # Main application entry point
+├── internal/             # Private application code
+│   ├── command/          # CLI commands (init, status, run-tests, commit, revert, watch)
+│   ├── config/           # Configuration management
+│   ├── logging/          # Standardized logging
+│   ├── overlay/          # OverlayFS implementation for TDD enforcement
+│   ├── patternmatcher/   # File pattern matching (glob patterns)
+│   ├── state/            # State persistence
+│   ├── tddgate/          # TDD gate logic
+│   ├── teststate/        # Test result parsing
+│   ├── utils/            # Utility functions
+│   └── version/          # Version information
 ├── kestra/
-│   ├── flows/          # Kestra workflow definitions
-│   └── config/         # Kestra configuration files
-├── Taskfile.yml        # Task automation
-├── go.mod              # Go module definition
-├── kestra-webhook-configuration.md  # Documentation for Kestra webhook setup
-└── opencode-integration-setup.md    # Documentation for OpenCode integration
+│   └── flows/            # Kestra workflow definitions
+├── Taskfile.yml          # Task automation
+└── go.mod                # Go module definition
 ```
 
 ## Quick Start
@@ -119,122 +133,139 @@ task mutation-test
 task lint
 ```
 
-## TCR (Test && Commit || Revert) Enforcer
+## Commands
 
-Fire-Flow includes a TDD enforcement tool that implements the Test && Commit || Revert workflow using an overlay filesystem. This provides filesystem-level enforcement of TDD practices:
+Fire-Flow provides the following CLI commands:
 
-1. **OverlayFS-based enforcement** - All changes are written to an upper layer (tmpfs), not the real filesystem
-2. **Automatic commit/discard** - Based on test results
-3. **Zero pollution** - No temporary data in project directory
-4. **Filesystem-level protection** - Cannot bypass TDD rules
+| Command | Description |
+|---------|-------------|
+| `fire-flow init` | Initialize Fire-Flow configuration and state |
+| `fire-flow status` | Show current TCR state (RED/GREEN) and statistics |
+| `fire-flow tdd-gate` | Check TDD gate - blocks if in GREEN state |
+| `fire-flow run-tests` | Execute test suite with timeout handling |
+| `fire-flow commit` | Stage and commit changes with state update |
+| `fire-flow revert` | Reset to HEAD and update state |
+| `fire-flow watch` | Watch for file changes with OverlayFS protection |
+| `fire-flow gate` | CI integration mode (stdin/stdout JSON) |
 
-### Commands
-
-- `fire-flow init` - Initialize Fire-Flow configuration and state
-- `fire-flow status` - Show current TCR state (RED/GREEN) and statistics
-- `fire-flow watch` - Watch for file changes and automatically run tests
-- `fire-flow gate` - Read from stdin and write to stdout for CI integration
-
-### OverlayFS Implementation Details
-
-The overlay filesystem implementation provides:
-
-- **Mounting**: Creates an overlay filesystem with the project directory as the lower layer and a temporary upper layer
-- **File Watching**: Uses fsnotify to monitor file changes in real-time
-- **Test Execution**: Automatically runs tests when file changes are detected
-- **Commit/Discard**: Commits changes to the real filesystem if tests pass, discards them if tests fail
-- **Cleanup**: Properly unmounts the overlay when the process exits
-
-When using `fire-flow watch`, the following occurs:
-1. An overlay mount is created with the current directory as the lower layer
-2. All file changes are written to the upper layer (tmpfs)
-3. When a file is modified, the system detects the change and runs tests
-4. If tests pass, changes are committed to the lower layer (real filesystem)
-5. If tests fail, changes are discarded from the upper layer
-6. The overlay is properly unmounted when the process exits
-
-### Usage Example
+### Usage Examples
 
 ```bash
 # Initialize Fire-Flow
 fire-flow init
 
-# Start watching for file changes
-fire-flow watch
+# Check current state
+fire-flow status
 
-# In another terminal, make a change to a source file
-# The system will automatically run tests and either commit or discard the changes
+# Run tests with default timeout
+fire-flow run-tests
+
+# Run tests with custom timeout
+fire-flow run-tests --timeout 60
+
+# Commit changes with message
+fire-flow commit --message "feat: implement user authentication"
+
+# Revert changes (hard reset)
+fire-flow revert
+
+# Watch mode with OverlayFS (requires root)
+sudo fire-flow watch
 ```
 
-### System Requirements
+## Configuration
 
-- Linux with OverlayFS support
-- `sudo` privileges for mounting OverlayFS (required for `fire-flow watch`)
-- Go 1.24+ installed
-
-### Error Handling
-
-The system provides comprehensive error handling for:
-- Overlay mounting failures
-- Test execution errors
-- File watcher errors
-- Cleanup operations
-
-### Configuration
-
-Fire-Flow uses Viper for configuration management. Configuration is stored in `.fire-flow/config.yaml`:
+Fire-Flow stores configuration in `.opencode/tcr/config.yml`:
 
 ```yaml
-testCommand: "go test -json ./..."        # Command to run tests
-testPatterns:                              # Patterns for identifying test files
-  - "_test\\.go$"
-protectedPaths:                            # Paths that cannot be modified
+testCommand: "go test -json ./..."    # Command to run tests
+testPatterns:                          # Glob patterns for test files
+  - "*_test.go"
+protectedPaths:                        # Paths that cannot be modified
   - "opencode.json"
-  - ".fire-flow"
-timeout: 30                                # Test execution timeout in seconds
-autoCommitMsg: "WIP"                       # Default commit message
+  - ".opencode/tcr"
+timeout: 30                            # Test execution timeout in seconds
+autoCommitMsg: "WIP"                   # Default commit message
+overlayWorkDir: "/tmp/fire-flow-overlay-work"
+watchDebounce: 500                     # File watcher debounce in ms
+watchIgnore:                           # Patterns to ignore in watch mode
+  - ".git"
+  - "node_modules"
+  - ".opencode"
 ```
 
-Viper supports multiple configuration sources including:
-- YAML config file
-- Environment variables
-- Command-line flags
+Configuration can be overridden with environment variables:
+- `FIRE_FLOW_ROOT` - Override the root directory for state/config
+- `TDD_TEST_COMMAND` - Override the test command
+- `TDD_TIMEOUT` - Override the timeout
+- `TDD_AUTO_COMMIT_MSG` - Override the auto-commit message
+
+## State Management
+
+Fire-Flow maintains state in `.opencode/tcr/state.json`:
+
+```json
+{
+  "mode": "both",
+  "revertStreak": 0,
+  "failingTests": [],
+  "lastCommitTime": "2025-12-23T00:00:00Z"
+}
+```
+
+- **RED state**: Tests are failing (`failingTests` is not empty)
+- **GREEN state**: All tests passing (`failingTests` is empty)
+
+## Kestra Integration
+
+Fire-Flow includes Kestra workflows for CI/CD orchestration. Workflows are defined in `kestra/flows/`:
+
+- `tcr-enforcement-workflow.yml` - Main TCR workflow
+- `hello-flow.yml` - Basic example workflow
+- `build-and-test.yml` - Build and test workflow
+
+### Webhook Configuration
+
+See [kestra-webhook-configuration.md](kestra-webhook-configuration.md) for API integration details.
 
 ## OpenCode Integration
 
-This project supports integration with OpenCode through Kestra workflows. See the following documentation files for setup instructions:
+Fire-Flow supports AI coding agent integration through webhooks. See [OPENCODE_INTEGRATION.md](OPENCODE_INTEGRATION.md) for setup instructions.
 
-- [Kestra Webhook Configuration](kestra-webhook-configuration.md)
-- [OpenCode Integration Setup](opencode-integration-setup.md)
+## Development
 
-## Kestra Workflows
+### Building
 
-Example workflows are provided in `kestra/flows/`:
-
-- `hello-flow.yml` - Basic hello world workflow
-- `build-and-test.yml` - Build and test the Go application
-
-### Creating New Workflows
-
-Create YAML files in `kestra/flows/` following the Kestra workflow syntax:
-
-```yaml
-id: my-workflow
-namespace: fire.flow
-
-tasks:
-  - id: my-task
-    type: io.kestra.core.tasks.log.Log
-    message: "Hello from my workflow!"
+```bash
+task build
 ```
 
-## Local Kestra Usage
+The binary will be created in `./bin/fire-flow`
 
-This project is designed to use Kestra locally without Docker. All workflow orchestration is handled through the Fire-Flow binary and local Kestra processes.
+### Testing
 
-## Stopping Services
+```bash
+# Run all tests
+task test
 
-Since we're using Kestra locally without Docker, no special stopping commands are needed.
+# Run tests with coverage
+task test-coverage
+
+# Run tests with verbose output
+go test -v ./...
+```
+
+### Linting
+
+```bash
+task lint
+```
+
+## System Requirements
+
+- **Go 1.25+**: Required for building
+- **Linux with OverlayFS**: Required for `watch` command
+- **sudo privileges**: Required for OverlayFS mounting
 
 ## License
 

@@ -11,7 +11,9 @@ import (
 
 // Config holds the TCR enforcer configuration.
 type Config struct {
-	TestCommand    string   `yaml:"testCommand"`
+	TestCommand string `yaml:"testCommand"`
+	// TestPatterns contains glob patterns (e.g., "*_test.go") for matching test files.
+	// Note: Uses filepath.Match semantics, not regex.
 	TestPatterns   []string `yaml:"testPatterns"`
 	ProtectedPaths []string `yaml:"protectedPaths"`
 	Timeout        int      `yaml:"timeout"`
@@ -24,8 +26,9 @@ type Config struct {
 // DefaultConfig returns the default configuration.
 func DefaultConfig() *Config {
 	return &Config{
-		TestCommand:    "go test -json ./...",
-		TestPatterns:   []string{"_test\\.go$"},
+		TestCommand: "go test -json ./...",
+		// Use glob patterns, not regex
+		TestPatterns:   []string{"*_test.go"},
 		ProtectedPaths: []string{"opencode.json", ".opencode/tcr"},
 		Timeout:        30,
 		AutoCommitMsg:  "WIP",
@@ -56,13 +59,13 @@ func LoadFromFile(filePath string) (*Config, error) {
 	if testCommand := os.Getenv("TDD_TEST_COMMAND"); testCommand != "" {
 		cfg.TestCommand = testCommand
 	}
-	
+
 	if timeoutStr := os.Getenv("TDD_TIMEOUT"); timeoutStr != "" {
 		if timeout, err := strconv.Atoi(timeoutStr); err == nil {
 			cfg.Timeout = timeout
 		}
 	}
-	
+
 	if autoCommitMsg := os.Getenv("TDD_AUTO_COMMIT_MSG"); autoCommitMsg != "" {
 		cfg.AutoCommitMsg = autoCommitMsg
 	}
