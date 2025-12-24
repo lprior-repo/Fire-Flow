@@ -1,37 +1,20 @@
 package command
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
-	"os/signal"
 	"strings"
-	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/lprior-repo/Fire-Flow/internal/config"
-	"github.com/lprior-repo/Fire-Flow/internal/overlay"
+	"github.com/lprior-repo/Fire-Flow/internal/state"
 	"github.com/lprior-repo/Fire-Flow/internal/utils"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
-// Command interface defines the contract for all Fire-Flow commands
+// Command interface defines the structure for all Fire-Flow commands
 type Command interface {
-	// Execute runs the command logic and returns an error if it fails
 	Execute() error
-}
-
-// BaseCommand provides common functionality for all commands
-type BaseCommand struct {
-	// Add common fields here if needed
-}
-
-// ExecuteBase implements the base execution logic
-func (c *BaseCommand) ExecuteBase() error {
-	// Common setup logic can go here
-	return nil
 }
 
 // CommandFactory creates command instances
@@ -56,9 +39,7 @@ func (f *CommandFactory) NewCommand(name string) (Command, error) {
 }
 
 // InitCommand represents the init command
-type InitCommand struct {
-	BaseCommand
-}
+type InitCommand struct{}
 
 // Execute runs the init command to set up Fire-Flow environment
 func (cmd *InitCommand) Execute() error {
@@ -97,9 +78,7 @@ func (cmd *InitCommand) Execute() error {
 }
 
 // StatusCommand represents the status command
-type StatusCommand struct {
-	BaseCommand
-}
+type StatusCommand struct{}
 
 // Execute runs the status command to show current state
 func (cmd *StatusCommand) Execute() error {
@@ -118,99 +97,8 @@ func (cmd *StatusCommand) Execute() error {
 	return nil
 }
 
-// WatchCommand represents the watch command
-type WatchCommand struct {
-	BaseCommand
-}
-
-// Execute runs the watch logic - watches for file changes and automatically runs tests
-func (cmd *WatchCommand) Execute() error {
-	// Load configuration
-	cfg, err := loadConfig()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-
-	// Initialize overlay manager with kernel mounter (requires sudo)
-	overlayManager := overlay.NewOverlayManager(overlay.NewKernelMounter())
-
-	// Create overlay mount
-	wd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get working directory: %w", err)
-	}
-
-	// Mount overlay
-	mount, err := overlayManager.Mount(wd)
-	if err != nil {
-		return fmt.Errorf("failed to mount overlay: %w", err)
-	}
-
-	// Print mount info
-	fmt.Printf("Overlay mounted at: %s\n", mount.Config.MergedDir)
-	fmt.Printf("Lower directory: %s\n", mount.Config.LowerDir)
-	fmt.Printf("Upper directory: %s\n", mount.Config.UpperDir)
-
-	// Set up file watcher
-	watcher, err := NewFileWatcher(mount.Config.MergedDir)
-	if err != nil {
-		overlayManager.Unmount(mount)
-		return fmt.Errorf("failed to create file watcher: %w", err)
-	}
-	defer func() {
-		watcher.Close()
-		overlayManager.Unmount(mount)
-		fmt.Println("Overlay unmounted successfully")
-	}()
-
-	// Set up signal handling for graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt)
-
-	// Start watching for changes
-	fmt.Println("Watching for file changes... (Press Ctrl+C to stop)")
-
-	// Run initial test
-	_, err = runTests(cfg.TestCommand, cfg.Timeout, true)
-	if err != nil {
-		fmt.Printf("Initial test run failed: %v\n", err)
-		return err
-	}
-
-	// Process file changes
-	for {
-		select {
-		case <-watcher.Events():
-			// Run tests on change
-			fmt.Println("File change detected, running tests...")
-			_, err := runTests(cfg.TestCommand, cfg.Timeout, false)
-			if err != nil {
-				fmt.Printf("Tests failed: %v\n", err)
-				// Discard changes if tests fail
-				fmt.Println("Discarding changes...")
-				if err := overlayManager.Discard(mount); err != nil {
-					return fmt.Errorf("error discarding changes: %w", err)
-				}
-			} else {
-				fmt.Println("Tests passed, committing changes...")
-				// Commit changes if tests pass
-				if err := overlayManager.Commit(mount); err != nil {
-					return fmt.Errorf("error committing changes: %w", err)
-				}
-			}
-		case err := <-watcher.Errors():
-			fmt.Printf("Watcher error: %v\n", err)
-		case <-sigChan:
-			fmt.Println("\nReceived interrupt signal, shutting down...")
-			return nil
-		}
-	}
-}
-
 // GateCommand represents the gate command
-type GateCommand struct {
-	BaseCommand
-}
+type GateCommand struct{}
 
 // Execute runs the gate logic - reads from stdin and writes to stdout for CI integration
 func (cmd *GateCommand) Execute() error {
@@ -255,9 +143,7 @@ func (cmd *GateCommand) Execute() error {
 }
 
 // TddGateCommand represents the TDD gate command
-type TddGateCommand struct {
-	BaseCommand
-}
+type TddGateCommand struct{}
 
 // Execute runs the TDD gate check - blocks implementation when tests pass (GREEN), allows when they fail (RED)
 func (cmd *TddGateCommand) Execute() error {
@@ -404,83 +290,4 @@ func extractFailedTests(output string) []string {
 	}
 
 	return failedTests
-}
-
-// FileWatcher provides file watching functionality using fsnotify
-type FileWatcher struct {
-	watcher *fsnotify.Watcher
-	events  chan struct{}
-	errors  chan error
-	closed  chan struct{}
-}
-
-// NewFileWatcher creates a new file watcher for the given directory
-func NewFileWatcher(dir string) (*FileWatcher, error) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return nil, err
-	}
-
-	// Add the directory to watch
-	err = watcher.Add(dir)
-	if err != nil {
-		watcher.Close()
-		return nil, err
-	}
-
-	w := &FileWatcher{
-		watcher: watcher,
-		events:  make(chan struct{}, 10),
-		errors:  make(chan error, 10),
-		closed:  make(chan struct{}),
-	}
-
-	// Start goroutine to handle fsnotify events
-	go func() {
-		defer watcher.Close()
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				// Only trigger on write events for files in the watched directory
-				if event.Op&fsnotify.Write == fsnotify.Write {
-					select {
-					case w.events <- struct{}{}:
-					default:
-						// Channel full, skip
-					}
-				}
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				select {
-				case w.errors <- err:
-				default:
-					// Channel full, skip
-				}
-			case <-w.closed:
-				return
-			}
-		}
-	}()
-
-	return w, nil
-}
-
-// Events returns a channel that receives events when files change
-func (w *FileWatcher) Events() <-chan struct{} {
-	return w.events
-}
-
-// Errors returns a channel that receives errors
-func (w *FileWatcher) Errors() <-chan error {
-	return w.errors
-}
-
-// Close closes the file watcher
-func (w *FileWatcher) Close() {
-	close(w.closed)
 }

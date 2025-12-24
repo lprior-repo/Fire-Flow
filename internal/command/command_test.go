@@ -1,7 +1,12 @@
 package command
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/lprior-repo/Fire-Flow/internal/utils"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCommandInterface(t *testing.T) {
@@ -53,4 +58,47 @@ func TestCommandFactoryNewCommand(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for invalid command")
 	}
+}
+
+func TestInitCommand_Execute(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "fire-flow-init-test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Override the TCR path to use the temp directory
+	originalTCRPath := utils.GetTCRPath()
+	originalConfigPath := utils.GetConfigPath()
+	originalStatePath := utils.GetStatePath()
+
+	// Mock paths to use temp directory
+	utils.GetTCRPath = func() string { return tempDir }
+	utils.GetConfigPath = func() string { return filepath.Join(tempDir, "config.yml") }
+	utils.GetStatePath = func() string { return filepath.Join(tempDir, "state.json") }
+
+	// Create InitCommand
+	initCmd := &InitCommand{}
+
+	// Execute init command
+	err = initCmd.Execute()
+	assert.NoError(t, err)
+
+	// Verify directory was created
+	_, err = os.Stat(tempDir)
+	assert.NoError(t, err)
+
+	// Verify config file was created
+	configPath := filepath.Join(tempDir, "config.yml")
+	_, err = os.Stat(configPath)
+	assert.NoError(t, err)
+
+	// Verify state file was created
+	statePath := filepath.Join(tempDir, "state.json")
+	_, err = os.Stat(statePath)
+	assert.NoError(t, err)
+
+	// Restore original functions
+	utils.GetTCRPath = func() string { return originalTCRPath }
+	utils.GetConfigPath = func() string { return originalConfigPath }
+	utils.GetStatePath = func() string { return originalStatePath }
 }
