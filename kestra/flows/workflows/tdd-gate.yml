@@ -1,0 +1,69 @@
+id: tdd-gate
+namespace: fire.flow.workflows
+
+description: |
+  TDD Gate Enforcement Workflow
+
+  Checks if implementation is allowed based on current state:
+  - RED state (tests failing) → Allow implementation
+  - GREEN state (tests passing) → Block implementation
+
+  This enforces TDD discipline:
+  1. Write a failing test first (RED)
+  2. Implement code to pass (allowed because RED)
+  3. Tests pass → commit (GREEN)
+  4. Must write new failing test before more implementation
+
+inputs:
+  - id: working_dir
+    type: STRING
+    defaults: /home/lewis/src/Fire-Flow
+
+
+tasks:
+  - id: load_state
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - |
+        STATE_FILE="{{ inputs.working_dir }}/.opencode/tcr/state.json"
+        if [ -f "$STATE_FILE" ]; then
+          LAST_RESULT=$(cat "$STATE_FILE" | grep -o '"lastTestResult":[^,}]*' | cut -d: -f2)
+          echo "lastTestResult=$LAST_RESULT"
+        else
+          echo "lastTestResult=false"
+        fi
+
+  - id: check_gate
+    type: io.kestra.plugin.core.flow.If
+    condition: "{{ outputs.load_state.vars.stdout contains 'lastTestResult=true' }}"
+    then:
+      # GREEN state - block implementation
+      - id: block
+        type: io.kestra.core.tasks.log.Log
+        message: "🚫 TDD GATE BLOCKED: Tests are GREEN. Write a failing test first!"
+
+      - id: fail_gate
+        type: io.kestra.plugin.scripts.shell.Commands
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
+        commands:
+          - |
+            echo "Implementation blocked - write a failing test first"
+            exit 1
+
+    else:
+      # RED state - allow implementation
+      - id: allow
+        type: io.kestra.core.tasks.log.Log
+        message: "✅ TDD GATE OPEN: Tests are RED. Implementation allowed."
+
+      - id: pass_gate
+        type: io.kestra.plugin.scripts.shell.Commands
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
+        commands:
+          - |
+            echo "Implementation allowed - tests are failing"
+            echo "allowed=true"

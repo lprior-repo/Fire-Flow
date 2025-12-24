@@ -1,0 +1,38 @@
+id: tcr-save-state
+namespace: fire.flow.tasks
+
+description: |
+  Atomic task: Save TCR state to state.json
+  Persists workflow state for next execution.
+
+inputs:
+  - id: working_dir
+    type: STRING
+    defaults: /home/lewis/src/Fire-Flow
+  - id: last_test_result
+    type: BOOLEAN
+    description: Did tests pass? (true=GREEN, false=RED)
+  - id: overlay_active
+    type: BOOLEAN
+    defaults: false
+
+tasks:
+  - id: save
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - |
+        STATE_FILE="{{ inputs.working_dir }}/.opencode/tcr/state.json"
+        mkdir -p "$(dirname "$STATE_FILE")"
+
+        cat > "$STATE_FILE" << 'STATEEOF'
+        {
+          "version": "2.0",
+          "lastTestResult": {{ inputs.last_test_result }},
+          "lastTestTime": "$(date -Iseconds)",
+          "overlayActive": {{ inputs.overlay_active }}
+        }
+        STATEEOF
+
+        echo "State saved: lastTestResult={{ inputs.last_test_result }}"

@@ -1,0 +1,63 @@
+id: tcr-run-tests
+namespace: fire.flow.tasks
+
+description: |
+  Atomic task: Execute Go tests and return structured result.
+
+  Returns:
+    - passed: boolean (true if all tests passed)
+    - failed_count: number of failed tests
+    - executed_count: number of tests run
+    - output: raw test output
+
+  Pattern: Task returns data, orchestrator decides action.
+
+inputs:
+  - id: working_dir
+    type: STRING
+    defaults: /home/lewis/src/Fire-Flow
+  - id: test_command
+    type: STRING
+    defaults: "go test -json -timeout 30s ./..."
+  - id: timeout_seconds
+    type: INT
+    defaults: 60
+
+tasks:
+  - id: run
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    timeout: "PT{{ inputs.timeout_seconds }}S"
+    outputFiles:
+      - result.json
+    commands:
+      - |
+        cd "{{ inputs.working_dir }}"
+
+        # Run tests and capture output
+        TEST_OUTPUT=$({{ inputs.test_command }} 2>&1) || true
+
+        # Parse JSON output to count passed/failed
+        FAILED_COUNT=$(echo "$TEST_OUTPUT" | grep '"Action":"fail"' | grep -c '"Test":' || echo "0")
+        EXECUTED_COUNT=$(echo "$TEST_OUTPUT" | grep '"Action":"run"' | grep -c '"Test":' || echo "0")
+
+        # Determine if passed (no failures)
+        if [ "$FAILED_COUNT" -eq "0" ] && [ "$EXECUTED_COUNT" -gt "0" ]; then
+          PASSED="true"
+        else
+          PASSED="false"
+        fi
+
+        # Output structured result
+        cat > result.json << EOF
+        {
+          "passed": $PASSED,
+          "failed_count": $FAILED_COUNT,
+          "executed_count": $EXECUTED_COUNT,
+          "output": $(echo "$TEST_OUTPUT" | head -100 | jq -Rs .)
+        }
+        EOF
+
+        echo "Tests: executed=$EXECUTED_COUNT, failed=$FAILED_COUNT, passed=$PASSED"
+        cat result.json
