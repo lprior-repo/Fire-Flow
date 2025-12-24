@@ -26,6 +26,31 @@ tasks:
     type: io.kestra.core.tasks.log.Log
     message: "Starting OpenCode+Qwen3 beads loop in {{ inputs.working_dir }}"
 
+  - id: sync_repo_and_beads
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Pull latest code and sync beads database
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - |
+        cd {{ inputs.working_dir }}
+        export HOME="/home/lewis"
+        export PATH="/home/lewis/.local/bin:/usr/bin:$PATH"
+
+        echo "=== Syncing repository ==="
+        git stash 2>/dev/null || true
+        git pull origin main 2>&1 || true
+        git stash pop 2>/dev/null || true
+
+        echo "=== Syncing beads database ==="
+        # Export from source and import to working copy
+        bd export --dir /home/lewis/src/Fire-Flow/.beads > /tmp/beads-sync.jsonl 2>/dev/null
+        bd import /tmp/beads-sync.jsonl 2>/dev/null || true
+        rm -f /tmp/beads-sync.jsonl
+
+        echo "=== Ready beads ==="
+        bd ready 2>/dev/null | head -5 || echo "No beads found"
+
   - id: beads_loop
     type: io.kestra.plugin.core.flow.ForEach
     values: "{{ range(1, inputs.max_iterations) }}"
@@ -102,7 +127,7 @@ tasks:
 
   - id: sync_final
     type: io.kestra.plugin.scripts.shell.Commands
-    description: Final sync of beads
+    description: Push changes back to source and sync beads
     taskRunner:
       type: io.kestra.plugin.core.runner.Process
     commands:
@@ -110,7 +135,17 @@ tasks:
         cd {{ inputs.working_dir }}
         export HOME="/home/lewis"
         export PATH="/home/lewis/.local/bin:/usr/bin:$PATH"
+
+        echo "=== Pushing changes to source ==="
+        git add -A
+        git diff --cached --quiet || git commit -m "OpenCode+Qwen3: Auto-commit from Kestra workflow"
+        git push origin main 2>&1 || true
+
+        echo "=== Syncing beads ==="
         bd sync 2>/dev/null || true
+
+        echo "=== Final status ==="
+        bd stats 2>/dev/null || true
 
   - id: complete
     type: io.kestra.core.tasks.log.Log
