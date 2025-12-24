@@ -8,76 +8,120 @@ import (
 )
 
 func TestOverlayError_Error(t *testing.T) {
-	innerErr := errors.New("inner error")
+	// Arrange
 	err := &OverlayError{
-		Op:  "mount",
-		Err: innerErr,
+		Op:  "Mount",
+		Err: errors.New("test error"),
 	}
 
-	expected := "overlay mount failed: inner error"
-	assert.Equal(t, expected, err.Error())
-	assert.Equal(t, innerErr, err.Unwrap())
+	// Act
+	result := err.Error()
+
+	// Assert
+	assert.Equal(t, "overlay Mount failed: test error", result)
 }
 
-func TestMountError_Error(t *testing.T) {
-	innerErr := errors.New("detailed error")
+func TestOverlayError_Unwrap(t *testing.T) {
+	// Arrange
+	baseErr := errors.New("base error")
+	err := &OverlayError{
+		Op:  "Mount",
+		Err: baseErr,
+	}
+
+	// Act
+	unwrapped := err.Unwrap()
+
+	// Assert
+	assert.Equal(t, baseErr, unwrapped)
+}
+
+func TestMountError_ErrorWithDetail(t *testing.T) {
+	// Arrange
 	err := &MountError{
 		Reason: "permission_denied",
-		Detail: innerErr,
+		Detail: errors.New("access denied"),
 	}
 
-	expected := "mount error (permission_denied): detailed error"
-	assert.Equal(t, expected, err.Error())
+	// Act
+	result := err.Error()
+
+	// Assert
+	assert.Equal(t, "mount error (permission_denied): access denied", result)
 }
 
-func TestMountError_ErrorNoDetail(t *testing.T) {
+func TestMountError_ErrorWithoutDetail(t *testing.T) {
+	// Arrange
 	err := &MountError{
 		Reason: "no_device",
 	}
 
-	expected := "mount error: no_device"
-	assert.Equal(t, expected, err.Error())
+	// Act
+	result := err.Error()
+
+	// Assert
+	assert.Equal(t, "mount error: no_device", result)
 }
 
 func TestErrAlreadyMounted_Error(t *testing.T) {
+	// Arrange
 	err := &ErrAlreadyMounted{
 		Path: "/tmp/test",
 	}
 
-	expected := "path already mounted: /tmp/test"
-	assert.Equal(t, expected, err.Error())
+	// Act
+	result := err.Error()
+
+	// Assert
+	assert.Equal(t, "path already mounted: /tmp/test", result)
 }
 
 func TestErrNotMounted_Error(t *testing.T) {
+	// Arrange
 	err := &ErrNotMounted{
 		Path: "/tmp/test",
 	}
 
-	expected := "path not mounted: /tmp/test"
-	assert.Equal(t, expected, err.Error())
+	// Act
+	result := err.Error()
+
+	// Assert
+	assert.Equal(t, "path not mounted: /tmp/test", result)
 }
 
 func TestUserFriendlyError_MountError(t *testing.T) {
+	// Arrange
 	err := &MountError{
 		Reason: "permission_denied",
 	}
 
-	expected := "Permission denied. Try: sudo fire-flow watch"
-	assert.Equal(t, expected, UserFriendlyError(err))
+	// Act
+	result := UserFriendlyError(err)
+
+	// Assert
+	assert.Equal(t, "Permission denied. Try: sudo fire-flow watch", result)
 }
 
 func TestUserFriendlyError_AlreadyMounted(t *testing.T) {
+	// Arrange
 	err := &ErrAlreadyMounted{
 		Path: "/tmp/test",
 	}
 
-	expected := "Already mounted at /tmp/test. Unmount first."
-	assert.Equal(t, expected, UserFriendlyError(err))
+	// Act
+	result := UserFriendlyError(err)
+
+	// Assert
+	assert.Equal(t, "Already mounted at /tmp/test. Unmount first.", result)
 }
 
 func TestUserFriendlyError_GenericError(t *testing.T) {
+	// Arrange
 	err := errors.New("generic error")
 
-	expected := "generic error"
-	assert.Equal(t, expected, UserFriendlyError(err))
+	// Act
+	result := UserFriendlyError(err)
+
+	// Assert
+	assert.Equal(t, "generic error", result)
 }

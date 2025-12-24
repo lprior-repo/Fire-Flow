@@ -38,6 +38,17 @@ func TestFakeMounter_Mount_DoubleMountFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "already mounted")
 }
 
+func TestFakeMounter_Mount_EmptyMergedDir(t *testing.T) {
+	m := NewFakeMounter()
+	config := MountConfig{MergedDir: ""}
+
+	mount, err := m.Mount(config)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, mount)
+	assert.Equal(t, config, mount.Config)
+}
+
 func TestFakeMounter_Unmount_Success(t *testing.T) {
 	m := NewFakeMounter()
 	config := MountConfig{MergedDir: "/tmp/merged"}
@@ -67,6 +78,44 @@ func TestFakeMounter_Unmount_NilSafe(t *testing.T) {
 	err := m.Unmount(nil)
 
 	assert.NoError(t, err)
+}
+
+func TestFakeMounter_Commit_Success(t *testing.T) {
+	m := NewFakeMounter()
+	config := MountConfig{MergedDir: "/tmp/merged"}
+	mount, _ := m.Mount(config)
+
+	err := m.Commit(mount)
+
+	assert.NoError(t, err)
+}
+
+func TestFakeMounter_Commit_NilMount(t *testing.T) {
+	m := NewFakeMounter()
+
+	err := m.Commit(nil)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot commit nil mount")
+}
+
+func TestFakeMounter_Discard_Success(t *testing.T) {
+	m := NewFakeMounter()
+	config := MountConfig{MergedDir: "/tmp/merged"}
+	mount, _ := m.Mount(config)
+
+	err := m.Discard(mount)
+
+	assert.NoError(t, err)
+}
+
+func TestFakeMounter_Discard_NilMount(t *testing.T) {
+	m := NewFakeMounter()
+
+	err := m.Discard(nil)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot discard nil mount")
 }
 
 func TestMounterInterface_AllMethodsExist(t *testing.T) {

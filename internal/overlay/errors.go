@@ -1,6 +1,8 @@
 package overlay
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // OverlayError is the base error type for overlay operations
 type OverlayError struct {
@@ -45,13 +47,6 @@ type ErrNotMounted struct {
 
 func (e *ErrNotMounted) Error() string {
 	return fmt.Sprintf("path not mounted: %s", e.Path)
-}
-
-// ErrInvalidMount indicates a mount operation with nil mount
-type ErrInvalidMount struct{}
-
-func (e *ErrInvalidMount) Error() string {
-	return "invalid mount"
 }
 
 // UserFriendlyError returns a message suitable for CLI output

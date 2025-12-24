@@ -111,7 +111,7 @@ func (k *KernelMounter) Unmount(mount *OverlayMount) error {
 // Commit merges changes from upper to lower
 func (k *KernelMounter) Commit(mount *OverlayMount) error {
 	if mount == nil {
-		return &OverlayError{Op: "commit", Err: &ErrInvalidMount{}}
+		return &OverlayError{Op: "commit", Err: fmt.Errorf("cannot commit nil mount")}
 	}
 
 	return filepath.Walk(mount.Config.UpperDir,
@@ -153,7 +153,7 @@ func (k *KernelMounter) Commit(mount *OverlayMount) error {
 // Discard removes upper layer without committing
 func (k *KernelMounter) Discard(mount *OverlayMount) error {
 	if mount == nil {
-		return &OverlayError{Op: "discard", Err: &ErrInvalidMount{}}
+		return &OverlayError{Op: "discard", Err: fmt.Errorf("cannot discard nil mount")}
 	}
 
 	// Remove all contents of upper directory

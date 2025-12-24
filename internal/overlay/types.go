@@ -1,6 +1,8 @@
 package overlay
 
 import (
+	"fmt"
+	"os"
 	"time"
 )
 
@@ -71,13 +73,13 @@ func NewFakeMounter() *FakeMounter {
 func (f *FakeMounter) Mount(config MountConfig) (*OverlayMount, error) {
 	// Check for double-mount
 	if _, exists := f.mounts[config.MergedDir]; exists {
-		return nil, &ErrAlreadyMounted{Path: config.MergedDir}
+		return nil, fmt.Errorf("already mounted at %s", config.MergedDir)
 	}
 
 	mount := &OverlayMount{
 		Config:    config,
 		MountedAt: time.Now(),
-		PID:       0, // For testing, we'll set this to 0
+		PID:       os.Getpid(),
 	}
 	f.mounts[config.MergedDir] = mount
 	return mount, nil
@@ -95,7 +97,7 @@ func (f *FakeMounter) Unmount(mount *OverlayMount) error {
 // Commit simulates merging upper to lower
 func (f *FakeMounter) Commit(mount *OverlayMount) error {
 	if mount == nil {
-		return &OverlayError{Op: "commit", Err: &ErrInvalidMount{}}
+		return fmt.Errorf("cannot commit nil mount")
 	}
 	// In real impl, would copy files from upper to lower
 	// Here we just mark as committed
@@ -105,7 +107,7 @@ func (f *FakeMounter) Commit(mount *OverlayMount) error {
 // Discard simulates discarding changes
 func (f *FakeMounter) Discard(mount *OverlayMount) error {
 	if mount == nil {
-		return &OverlayError{Op: "discard", Err: &ErrInvalidMount{}}
+		return fmt.Errorf("cannot discard nil mount")
 	}
 	// Clear simulated files
 	f.files = make(map[string][]byte)
