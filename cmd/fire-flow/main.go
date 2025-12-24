@@ -30,10 +30,34 @@ func main() {
 		os.Exit(1)
 	}
 
-	// For commit command, parse additional arguments
-	commitCmd, ok := cmd.(*command.CommitCommand)
-	if ok && len(os.Args) > 2 {
-		commitCmd.Message = os.Args[2]
+	// Parse command-specific arguments
+	switch c := cmd.(type) {
+	case *command.CommitCommand:
+		if len(os.Args) > 2 {
+			c.Message = os.Args[2]
+		}
+	case *command.SyncBeadsCommand:
+		if len(os.Args) > 2 {
+			c.SourceDir = os.Args[2]
+		}
+		if len(os.Args) > 3 {
+			c.WorkingDir = os.Args[3]
+		}
+	case *command.NextBeadCommand:
+		if len(os.Args) > 2 {
+			c.WorkingDir = os.Args[2]
+		}
+	case *command.RunAICommand:
+		if len(os.Args) > 2 {
+			c.BeadID = os.Args[2]
+		}
+		if len(os.Args) > 3 {
+			c.Model = os.Args[3]
+		}
+	case *command.PushChangesCommand:
+		if len(os.Args) > 2 {
+			c.Message = os.Args[2]
+		}
 	}
 
 	// Execute command
@@ -45,11 +69,17 @@ func main() {
 
 func printUsage() {
 	fmt.Println("Usage: fire-flow <command> [args]")
-	fmt.Println("Available commands:")
-	fmt.Println("  init       - Initialize TCR state")
-	fmt.Println("  status     - Show TCR status")
-	fmt.Println("  tdd-gate   - Run TDD gate check")
-	fmt.Println("  run-tests  - Execute test suite")
-	fmt.Println("  commit     - Commit changes")
-	fmt.Println("  revert     - Revert changes")
+	fmt.Println("\nTCR Commands:")
+	fmt.Println("  init         - Initialize TCR state")
+	fmt.Println("  status       - Show TCR status")
+	fmt.Println("  tdd-gate     - Run TDD gate check")
+	fmt.Println("  run-tests    - Execute test suite")
+	fmt.Println("  commit [msg] - Commit changes")
+	fmt.Println("  revert       - Revert changes")
+	fmt.Println("  watch        - Watch for changes")
+	fmt.Println("\nOrchestration Commands (for Kestra):")
+	fmt.Println("  sync-beads [source] [working]  - Sync beads database")
+	fmt.Println("  next-bead [working]            - Get next ready bead ID (JSON)")
+	fmt.Println("  run-ai <bead-id> [model]       - Run AI on a bead")
+	fmt.Println("  push-changes [msg]             - Push changes to remote")
 }

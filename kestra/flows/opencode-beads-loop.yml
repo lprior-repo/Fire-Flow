@@ -35,28 +35,16 @@ tasks:
       - |
         cd {{ inputs.working_dir }}
         export HOME="/home/lewis"
-        export PATH="/home/lewis/.local/bin:/usr/bin:$PATH"
+        export PATH="/home/lewis/.local/share/mise/installs/go/1.25.5/bin:/home/lewis/.local/bin:/usr/bin:$PATH"
+        export GOROOT="/home/lewis/.local/share/mise/installs/go/1.25.5"
 
-        echo "=== Syncing repository ==="
+        # Git sync
         git stash 2>/dev/null || true
         git pull origin main 2>&1 || true
         git stash pop 2>/dev/null || true
 
-        echo "=== Syncing beads database ==="
-        # Copy JSONL files from source (they contain the beads data)
-        cp /home/lewis/src/Fire-Flow/.beads/*.jsonl .beads/ 2>/dev/null || true
-
-        # Reinitialize db from JSONL if needed
-        if [ ! -f .beads/beads.db ] || [ .beads/completion-summary.jsonl -nt .beads/beads.db ]; then
-          rm -f .beads/beads.db
-          bd init --prefix Fire-Flow 2>/dev/null || true
-          bd import .beads/completion-summary.jsonl 2>/dev/null || true
-        fi
-
-        echo "=== Ready beads ==="
-        READY_COUNT=$(bd ready 2>/dev/null | /usr/bin/grep -c "Fire-Flow" || echo "0")
-        echo "Found $READY_COUNT ready beads"
-        bd ready 2>/dev/null | head -5 || echo "No beads found"
+        # Use fire-flow CLI for beads sync
+        fire-flow sync-beads /home/lewis/src/Fire-Flow {{ inputs.working_dir }}
 
   - id: beads_loop
     type: io.kestra.plugin.core.flow.ForEach
@@ -73,9 +61,9 @@ tasks:
             export HOME="/home/lewis"
             export PATH="/home/lewis/.local/share/mise/installs/go/1.25.5/bin:/home/lewis/.local/bin:/usr/bin:$PATH"
             export GOROOT="/home/lewis/.local/share/mise/installs/go/1.25.5"
-            BEAD_ID=$(bd ready 2>/dev/null | /usr/bin/grep -oE "Fire-Flow-[a-z0-9.]+" | head -1)
-            echo "Next bead: $BEAD_ID"
-            echo "$BEAD_ID"
+
+            # Use fire-flow CLI to get next bead
+            fire-flow next-bead {{ inputs.working_dir }}
 
       - id: run_opencode
         type: io.kestra.plugin.scripts.shell.Commands
@@ -89,44 +77,20 @@ tasks:
             export HOME="/home/lewis"
             export PATH="/home/lewis/.local/share/mise/installs/go/1.25.5/bin:/home/lewis/.local/bin:/usr/bin:$PATH"
             export GOROOT="/home/lewis/.local/share/mise/installs/go/1.25.5"
-            export XDG_CONFIG_HOME="/home/lewis/.config"
 
-            BEAD_ID=$(bd ready 2>/dev/null | /usr/bin/grep -oE "Fire-Flow-[a-z0-9.]+" | head -1)
+            # Get next bead ID using fire-flow CLI
+            BEAD_JSON=$(fire-flow next-bead {{ inputs.working_dir }} 2>/dev/null | tail -1)
+            BEAD_ID=$(echo "$BEAD_JSON" | /usr/bin/grep -oP '"bead_id":\s*"\K[^"]+')
+
             if [ -z "$BEAD_ID" ]; then
               echo "No beads found, skipping"
               exit 0
             fi
 
             echo "Working on bead: $BEAD_ID"
-            bd update $BEAD_ID --status=in_progress
 
-            # Get bead details
-            BEAD_DETAILS=$(bd show $BEAD_ID)
-
-            # Create prompt file for OpenCode
-            PROMPT_FILE="/tmp/opencode-prompt-$BEAD_ID.txt"
-            cat > "$PROMPT_FILE" << PROMPT_EOF
-            Work on this bead and complete it: $BEAD_ID
-
-            Details:
-            $BEAD_DETAILS
-
-            Instructions:
-            1. Analyze what needs to be done
-            2. Implement the changes
-            3. Run tests to verify
-            4. When complete, close the bead with: bd close $BEAD_ID
-            PROMPT_EOF
-
-            # Run OpenCode with the prompt using local Qwen3-Coder model
-            echo "Running OpenCode with Qwen3-Coder..."
-            opencode run -m local/qwen3-coder "$(cat $PROMPT_FILE)" 2>&1 || true
-
-            # Cleanup
-            rm -f "$PROMPT_FILE"
-
-            # Sync beads
-            bd sync 2>/dev/null || true
+            # Run AI on the bead using fire-flow CLI
+            fire-flow run-ai "$BEAD_ID" local/qwen3-coder
 
       - id: iteration_log
         type: io.kestra.core.tasks.log.Log
@@ -141,18 +105,11 @@ tasks:
       - |
         cd {{ inputs.working_dir }}
         export HOME="/home/lewis"
-        export PATH="/home/lewis/.local/bin:/usr/bin:$PATH"
+        export PATH="/home/lewis/.local/share/mise/installs/go/1.25.5/bin:/home/lewis/.local/bin:/usr/bin:$PATH"
+        export GOROOT="/home/lewis/.local/share/mise/installs/go/1.25.5"
 
-        echo "=== Pushing changes to source ==="
-        git add -A
-        git diff --cached --quiet || git commit -m "OpenCode+Qwen3: Auto-commit from Kestra workflow"
-        git push origin main 2>&1 || true
-
-        echo "=== Syncing beads ==="
-        bd sync 2>/dev/null || true
-
-        echo "=== Final status ==="
-        bd stats 2>/dev/null || true
+        # Use fire-flow CLI to push changes
+        fire-flow push-changes "OpenCode+Qwen3: Auto-commit from Kestra workflow"
 
   - id: complete
     type: io.kestra.core.tasks.log.Log

@@ -44,6 +44,15 @@ func (f *CommandFactory) NewCommand(name string) (Command, error) {
 		return &RevertCommand{}, nil
 	case "watch":
 		return &WatchCommand{}, nil
+	// Orchestration commands for Kestra
+	case "sync-beads":
+		return &SyncBeadsCommand{}, nil
+	case "next-bead":
+		return &NextBeadCommand{}, nil
+	case "run-ai":
+		return &RunAICommand{}, nil
+	case "push-changes":
+		return &PushChangesCommand{}, nil
 	default:
 		return nil, fmt.Errorf("unknown command: %s", name)
 	}
