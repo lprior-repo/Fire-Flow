@@ -37,6 +37,9 @@ protectedPaths:
 	assert.Equal(t, []string{"opencode.json", ".opencode/tcr"}, cfg.ProtectedPaths)
 	assert.Equal(t, 30, cfg.Timeout, "Default timeout should be 30 seconds")
 	assert.Equal(t, "WIP", cfg.AutoCommitMsg, "Default commit message should be WIP")
+	assert.Equal(t, "/tmp/fire-flow-overlay-work", cfg.OverlayWorkDir, "Default overlay work dir should be set")
+	assert.Equal(t, 500, cfg.WatchDebounce, "Default watch debounce should be 500ms")
+	assert.Equal(t, []string{".git", "node_modules", ".opencode"}, cfg.WatchIgnore, "Default watch ignore patterns should be set")
 }
 
 func TestConfig_LoadFromFile_CustomTimeout(t *testing.T) {
@@ -50,6 +53,11 @@ testPatterns:
   - "\\.(test|spec)\\.ts$"
 timeout: 60
 autoCommitMsg: "feat: auto-commit"
+overlayWorkDir: "/custom/overlay/work"
+watchDebounce: 1000
+watchIgnore:
+  - ".git"
+  - "node_modules"
 `
 	err := writeTestFile(configFile, yamlContent)
 	require.NoError(t, err)
@@ -62,6 +70,9 @@ autoCommitMsg: "feat: auto-commit"
 	assert.Equal(t, "npm test", cfg.TestCommand)
 	assert.Equal(t, 60, cfg.Timeout)
 	assert.Equal(t, "feat: auto-commit", cfg.AutoCommitMsg)
+	assert.Equal(t, "/custom/overlay/work", cfg.OverlayWorkDir)
+	assert.Equal(t, 1000, cfg.WatchDebounce)
+	assert.Equal(t, []string{".git", "node_modules"}, cfg.WatchIgnore)
 }
 
 func TestConfig_LoadFromFile_Nonexistent_DefaultConfig(t *testing.T) {

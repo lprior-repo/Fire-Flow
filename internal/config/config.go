@@ -16,6 +16,9 @@ type Config struct {
 	ProtectedPaths []string `yaml:"protectedPaths"`
 	Timeout        int      `yaml:"timeout"`
 	AutoCommitMsg  string   `yaml:"autoCommitMsg"`
+	OverlayWorkDir string   `yaml:"overlayWorkDir"`
+	WatchDebounce  int      `yaml:"watchDebounce"`
+	WatchIgnore    []string `yaml:"watchIgnore"`
 }
 
 // DefaultConfig returns the default configuration.
@@ -26,6 +29,9 @@ func DefaultConfig() *Config {
 		ProtectedPaths: []string{"opencode.json", ".opencode/tcr"},
 		Timeout:        30,
 		AutoCommitMsg:  "WIP",
+		OverlayWorkDir: "/tmp/fire-flow-overlay-work",
+		WatchDebounce:  500,
+		WatchIgnore:    []string{".git", "node_modules", ".opencode"},
 	}
 }
 
