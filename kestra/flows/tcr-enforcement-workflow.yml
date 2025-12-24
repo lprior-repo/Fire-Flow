@@ -46,7 +46,7 @@ tasks:
     output: true
     condition: "{{ outputs.run-tests.exitCode != 0 }}"
 
-- id: write-result
+  - id: write-result
     type: io.kestra.core.tasks.files.WriteFile
     description: Write structured result for OpenCode integration
     content: |
