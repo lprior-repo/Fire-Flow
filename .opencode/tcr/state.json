@@ -1,9 +1,12 @@
 {
-  "mode": "both",
-  "revertStreak": 1,
-  "failingTests": [
-    "TestMain",
-    "TestExample"
-  ],
-  "lastCommitTime": "2025-12-22T17:16:44.165468337-06:00"
+  "version": "",
+  "overlayActive": false,
+  "overlayMountPath": "",
+  "overlayUpperDir": "",
+  "overlayWorkDir": "",
+  "overlayMergedDir": "",
+  "overlayMountedAt": "0001-01-01T00:00:00Z",
+  "lastTestResult": true,
+  "lastTestTime": "2025-12-24T01:15:56.219902787-06:00",
+  "activeMounts": []
 }
