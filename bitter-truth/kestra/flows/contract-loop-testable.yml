@@ -42,11 +42,6 @@ inputs:
     defaults: "./bitter-truth/tools"
     description: Directory containing bitter-truth tools
 
-  - id: test_mode
-    type: BOOLEAN
-    defaults: false
-    description: If true, use stub tools instead of real AI/validation
-
   - id: timeout_seconds
     type: INT
     defaults: 300
@@ -68,7 +63,6 @@ tasks:
       Contract: {{ inputs.contract }}
       Task: {{ inputs.task }}
       Max Attempts: {{ inputs.max_attempts }}
-      Test Mode: {{ inputs.test_mode }}
       Input: {{ inputs.input_json }}
 
   # VALIDATION: Check inputs exist and are valid before loop
@@ -118,7 +112,6 @@ tasks:
           timeout_seconds: {{ inputs.timeout_seconds }}
           trace_id: "{{ vars.trace_id }}"
           tools_dir: "{{ inputs.tools_dir }}"
-          test_mode: {{ inputs.test_mode }}
         onFailure:
           - id: log_generate_error
             type: io.kestra.plugin.core.log.Log
@@ -138,7 +131,6 @@ tasks:
           trace_id: "{{ vars.trace_id }}"
           tools_dir: "{{ inputs.tools_dir }}"
           timeout_seconds: 60
-          test_mode: {{ inputs.test_mode }}
         onFailure:
           - id: log_execute_error
             type: io.kestra.plugin.core.log.Log
@@ -156,7 +148,6 @@ tasks:
           trace_id: "{{ vars.trace_id }}"
           tools_dir: "{{ inputs.tools_dir }}"
           dry_run: false
-          test_mode: {{ inputs.test_mode }}
 
       # 4. CHECK: Did we pass? (parse JSON response)
       - id: check_pass

@@ -35,11 +35,6 @@ inputs:
     defaults: false
     description: Skip actual validation, just check files exist
 
-  - id: test_mode
-    type: BOOLEAN
-    defaults: false
-    description: If true, use mock validation logic
-
 tasks:
   # STEP 1: VALIDATE INPUTS
   - id: validate_inputs
@@ -121,7 +116,6 @@ tasks:
       - |
         nu -c '
         let dry_run = {{ inputs.dry_run }}
-        let test_mode = {{ inputs.test_mode }}
 
         if $dry_run {
           # DRY RUN MODE: Skip validation, return success
@@ -131,23 +125,8 @@ tasks:
             data: { valid: true, was_dry_run: true },
             trace_id: "{{ inputs.trace_id }}"
           } | to json
-        } else if $test_mode {
-          # TEST MODE: Use mock validation logic
-          { level: "info", msg: "test_mode=true, using mock validation", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
-
-          let output = open "{{ inputs.output_path }}"
-
-          # Simple mock: check if data field exists
-          let valid = ($output | get data?) != null
-          let errors = if $valid { [] } else { ["Missing required data field"] }
-
-          print {
-            success: true,
-            data: { valid: $valid, errors: $errors, was_mock: true },
-            trace_id: "{{ inputs.trace_id }}"
-          } | to json
         } else {
-          # REAL MODE: Call validate.nu with contract
+          # Call validate.nu with contract
           { level: "info", msg: "Running contract validation", contract: "{{ inputs.contract_path }}", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
 
           let validate_input = {

@@ -45,11 +45,6 @@ inputs:
     defaults: 60
     description: Timeout for tool execution
 
-  - id: test_mode
-    type: BOOLEAN
-    defaults: false
-    description: If true, use mock execution instead of real tool
-
 tasks:
   # STEP 1: VALIDATE TOOL EXISTS
   - id: check_tool_exists
@@ -125,49 +120,31 @@ tasks:
         INPUTEOF
 
         nu -c '
-        let test_mode = {{ inputs.test_mode }}
-
-        if $test_mode {
-          # TEST MODE: Create mock output
-          { level: "info", msg: "test_mode=true, creating mock output", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
-          {
-            success: true,
-            data: { message: "mock execution" },
-            trace_id: "{{ inputs.trace_id }}",
-            duration_ms: 1.0,
-            was_mock: true
-          } | to json | save -f "{{ inputs.output_path }}"
-
-          { level: "info", msg: "logs: mock execution", trace_id: "{{ inputs.trace_id }}" } | to json | save -f "{{ inputs.logs_path }}"
-
-          print "Tool executed successfully (mock mode)"
-        } else {
-          # REAL MODE: Run tool via run-tool.nu
-          let tool_input = (try { open /tmp/exec-input.json } catch { {} })
-          let run_input = {
-            tool_path: "{{ inputs.tool_path }}"
-            tool_input: $tool_input
-            output_path: "{{ inputs.output_path }}"
-            logs_path: "{{ inputs.logs_path }}"
-            context: { trace_id: "{{ inputs.trace_id }}" }
-          }
-
-          { level: "info", msg: "Starting tool execution", tool_path: "{{ inputs.tool_path }}", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
-
-          let exec_result = do {
-            $run_input | to json | nu {{ inputs.tools_dir }}/run-tool.nu
-          } | complete
-
-          if $exec_result.exit_code != 0 {
-            { level: "error", msg: "Tool execution failed", exit_code: $exec_result.exit_code, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
-            print $exec_result.stdout
-            exit 1
-          }
-
-          let response = $exec_result.stdout | from json
-          { level: "info", msg: "Tool executed", success: $response.success, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
-          print $response | to json
+        # Run tool via run-tool.nu
+        let tool_input = (try { open /tmp/exec-input.json } catch { {} })
+        let run_input = {
+          tool_path: "{{ inputs.tool_path }}"
+          tool_input: $tool_input
+          output_path: "{{ inputs.output_path }}"
+          logs_path: "{{ inputs.logs_path }}"
+          context: { trace_id: "{{ inputs.trace_id }}" }
         }
+
+        { level: "info", msg: "Starting tool execution", tool_path: "{{ inputs.tool_path }}", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+
+        let exec_result = do {
+          $run_input | to json | nu {{ inputs.tools_dir }}/run-tool.nu
+        } | complete
+
+        if $exec_result.exit_code != 0 {
+          { level: "error", msg: "Tool execution failed", exit_code: $exec_result.exit_code, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+          print $exec_result.stdout
+          exit 1
+        }
+
+        let response = $exec_result.stdout | from json
+        { level: "info", msg: "Tool executed", success: $response.success, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+        print $response | to json
         '
 
   # STEP 4: VALIDATE OUTPUT FILES CREATED

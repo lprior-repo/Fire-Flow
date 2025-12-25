@@ -52,11 +52,6 @@ inputs:
     defaults: ""
     description: Trace ID for logging
 
-  - id: test_mode
-    type: BOOLEAN
-    defaults: false
-    description: If true, create stub tool instead of calling AI
-
 tasks:
   # STEP 1: VALIDATE INPUTS (fail early)
   - id: validate_inputs
@@ -115,49 +110,33 @@ tasks:
     commands:
       - |
         nu -c '
-        let test_mode = {{ inputs.test_mode }}
+        # Call opencode to generate code
+        { level: "info", msg: "Calling opencode for code generation", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
 
-        if $test_mode {
-          # TEST MODE: Create stub tool for testing without AI
-          { level: "info", msg: "test_mode=true, creating stub tool", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
-          "# Stub tool for testing\ndef main [] { { success: true, data: { message: \"stub\" } } | to json | print }" | save -f "{{ inputs.output_path }}"
-
-          print {
-            success: true,
-            generated: true,
-            was_test_mode: true,
-            output_path: "{{ inputs.output_path }}",
+        let gen_input = {
+          contract_path: "{{ inputs.contract_path }}"
+          task: "{{ inputs.task }}"
+          feedback: "{{ inputs.feedback }}"
+          attempt: "{{ inputs.attempt }}"
+          output_path: "{{ inputs.output_path }}"
+          context: {
             trace_id: "{{ inputs.trace_id }}"
-          } | to json
+            timeout_seconds: {{ inputs.timeout_seconds }}
+          }
+        }
+
+        let result = do {
+          $gen_input | to json | nu {{ inputs.tools_dir }}/generate.nu
+        } | complete
+
+        if $result.exit_code != 0 {
+          { level: "error", msg: "Code generation failed", exit_code: $result.exit_code, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+          print { success: false, error: "Code generation failed", trace_id: "{{ inputs.trace_id }}" } | to json
+          exit 1
         } else {
-          # REAL MODE: Call opencode to generate code
-          { level: "info", msg: "Calling opencode for code generation", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
-
-          let gen_input = {
-            contract_path: "{{ inputs.contract_path }}"
-            task: "{{ inputs.task }}"
-            feedback: "{{ inputs.feedback }}"
-            attempt: "{{ inputs.attempt }}"
-            output_path: "{{ inputs.output_path }}"
-            context: {
-              trace_id: "{{ inputs.trace_id }}"
-              timeout_seconds: {{ inputs.timeout_seconds }}
-            }
-          }
-
-          let result = do {
-            $gen_input | to json | nu {{ inputs.tools_dir }}/generate.nu
-          } | complete
-
-          if $result.exit_code != 0 {
-            { level: "error", msg: "Code generation failed", exit_code: $result.exit_code, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
-            print { success: false, error: "Code generation failed", trace_id: "{{ inputs.trace_id }}" } | to json
-            exit 1
-          } else {
-            let response = $result.stdout | from json
-            print $response | to json
-            exit 0
-          }
+          let response = $result.stdout | from json
+          print $response | to json
+          exit 0
         }
         '
 
