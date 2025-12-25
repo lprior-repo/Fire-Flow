@@ -156,6 +156,9 @@ def "modular_execute_captures_logs" [] {
 def "modular_validate_accepts_correct_output" [] {
     # Test: validate-tool correctly validates conforming output
 
+    # Clean up any previous test artifacts
+    rm -f "/tmp/output.json"
+
     # Create a valid output that matches echo contract
     {
         success: true
@@ -195,6 +198,9 @@ def "modular_validate_accepts_correct_output" [] {
 def "modular_validate_rejects_invalid_output" [] {
     # Test: validate-tool detects contract violations
 
+    # Clean up any previous test artifacts
+    rm -f "/tmp/output.json" "/tmp/modular-validate-bad.json"
+
     # Create output missing required field
     {
         success: true
@@ -227,7 +233,7 @@ def "modular_validate_rejects_invalid_output" [] {
     assert equal $response.success false "Should indicate validation failure"
 
     # Cleanup
-    rm -f "/tmp/modular-validate-bad.json"
+    rm -f "/tmp/output.json" "/tmp/modular-validate-bad.json"
 }
 
 # ==================================================
@@ -333,6 +339,9 @@ def "modular_chain_generate_to_execute" [] {
 def "modular_chain_execute_to_validate" [] {
     # Test: Chain execute-tool output to validate-tool input
 
+    # Clean up any previous test artifacts
+    rm -f "/tmp/output.json" "/tmp/modular-val-chain-tool.nu" "/tmp/modular-val-chain-output.json" "/tmp/modular-val-chain-logs.json"
+
     # Step 1: Execute tool, get output
     create_echo_tool "/tmp/modular-val-chain-tool.nu"
 
@@ -365,7 +374,7 @@ def "modular_chain_execute_to_validate" [] {
     assert equal $validate_result.exit_code 0 "Step 2: Validation completed"
 
     # Cleanup
-    rm -f "/tmp/modular-val-chain-tool.nu" "/tmp/modular-val-chain-output.json" "/tmp/modular-val-chain-logs.json"
+    rm -f "/tmp/output.json" "/tmp/modular-val-chain-tool.nu" "/tmp/modular-val-chain-output.json" "/tmp/modular-val-chain-logs.json"
 }
 
 #[test]
@@ -413,6 +422,9 @@ def "modular_full_pipeline_success" [] {
 #[test]
 def "modular_pipeline_with_feedback_loop" [] {
     # Test: Full pipeline with self-healing loop (attempt 1 fails, attempt 2 succeeds)
+
+    # Clean up any previous test artifacts
+    rm -f "/tmp/output.json" "/tmp/modular-attempt-1.nu" "/tmp/modular-attempt-1-output.json" "/tmp/modular-attempt-1-logs.json" "/tmp/modular-attempt-2.nu" "/tmp/modular-attempt-2-output.json" "/tmp/modular-attempt-2-logs.json"
 
     # ATTEMPT 1: Create broken tool
     let broken_tool = "/tmp/modular-attempt-1.nu"
@@ -555,6 +567,9 @@ def "modular_execute_is_pure" [] {
 def "modular_validate_is_pure" [] {
     # Test: validate-tool produces same result for same input
 
+    # Clean up any previous test artifacts
+    rm -f "/tmp/output.json" "/tmp/modular-validate-pure.json"
+
     # Create test output
     {
         success: true
@@ -593,5 +608,5 @@ def "modular_validate_is_pure" [] {
     assert equal $response_1.success $response_2.success "Success flag should be identical"
 
     # Cleanup
-    rm -f "/tmp/modular-validate-pure.json"
+    rm -f "/tmp/output.json" "/tmp/modular-validate-pure.json"
 }

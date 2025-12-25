@@ -107,13 +107,19 @@ def main [] {
     let needs_copy = ($output_path | is-not-empty) and ($contract_expected_path | is-not-empty) and ($data_file_path != $contract_expected_path)
     if $needs_copy {
         { level: "debug", msg: "copying output to contract's expected location", from: $data_file_path, to: $contract_expected_path } | to json -r | print -e
-        cp $data_file_path $contract_expected_path
+        # Force overwrite with -f flag
+        cp -f $data_file_path $contract_expected_path
+    } else {
+        { level: "debug", msg: "no copy needed", data_file_path: $data_file_path, contract_expected_path: $contract_expected_path, needs_copy: $needs_copy } | to json -r | print -e
     }
 
     # Run datacontract test against the server
     let result = do {
         datacontract test --server $server $contract_path
     } | complete
+
+    # Note: We do NOT clean up the copied file here - tests are responsible for cleanup
+    # This ensures callers can inspect the validated file if needed
 
     let duration_ms = (date now) - $start | into int | $in / 1000000
 
