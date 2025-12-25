@@ -125,7 +125,7 @@ tasks:
             type: io.kestra.plugin.core.log.Log
             message: "Contract satisfied on attempt {{ taskrun.value }}"
           - id: done
-            type: io.kestra.plugin.core.flow.End
+            type: io.kestra.plugin.core.execution.Exit
             state: SUCCESS
 
       # 5. SELF-HEAL: Collect feedback for next attempt (Law 2)
@@ -158,8 +158,8 @@ tasks:
 
       # 6. UPDATE FEEDBACK VARIABLE
       - id: update_feedback
-        type: io.kestra.plugin.core.flow.Set
-        values:
+        type: io.kestra.plugin.core.execution.SetVariables
+        variables:
           feedback: "{{ read('/tmp/feedback.txt') }}"
 
   # 7. ESCALATE: After max attempts, page human (Law 2)
@@ -179,7 +179,7 @@ tasks:
       Last feedback: {{ vars.feedback }}
 
   - id: fail
-    type: io.kestra.plugin.core.flow.End
+    type: io.kestra.plugin.core.execution.Exit
     state: FAILED
 
 outputs:
@@ -187,7 +187,7 @@ outputs:
     type: BOOLEAN
     value: "{{ outputs.check_pass is defined }}"
   - id: attempts
-    type: INTEGER
+    type: INT
     value: "{{ taskrun.value }}"
   - id: output_file
     type: STRING
