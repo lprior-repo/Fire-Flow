@@ -6,12 +6,12 @@
 # Output: JSON to stdout (EchoOutput wrapped in ToolResponse)
 # Logs: JSON to stderr
 
-# Read input from stdin
 def main [] {
     let start = date now
 
-    # Read and parse JSON input
-    let input = $in | from json
+    # Read JSON from stdin
+    let raw = open --raw /dev/stdin
+    let input = $raw | from json
 
     # Extract context
     let ctx = $input.context? | default {}
@@ -19,22 +19,24 @@ def main [] {
     let dry_run = $ctx.dry_run? | default false
 
     # Log start
-    {
+    let log_start = {
         level: "info"
         msg: "processing echo"
         trace_id: $trace_id
         message_len: ($input.message | str length)
         dry_run: $dry_run
         ts: (date now | format date "%s")
-    } | to json -r | print -e
+    }
+    $log_start | to json -r | print -e
 
     # Validate input
     if ($input.message? | is-empty) {
+        let dur = (date now) - $start | into int | $in / 1000000
         {
             success: false
             error: "message is required"
             trace_id: $trace_id
-            duration_ms: ((date now) - $start | into int) / 1_000_000
+            duration_ms: $dur
         } | to json
         return
     }
@@ -53,16 +55,17 @@ def main [] {
     }
 
     # Calculate duration
-    let duration_ms = ((date now) - $start | into int) / 1_000_000
+    let duration_ms = (date now) - $start | into int | $in / 1000000
 
     # Log completion
-    {
+    let log_end = {
         level: "info"
         msg: "tool completed"
         trace_id: $trace_id
         duration_ms: $duration_ms
         ts: (date now | format date "%s")
-    } | to json -r | print -e
+    }
+    $log_end | to json -r | print -e
 
     # Return wrapped response
     {

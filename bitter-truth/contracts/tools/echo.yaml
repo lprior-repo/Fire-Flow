@@ -5,26 +5,17 @@ info:
   version: 1.0.0
   description: Echo tool - proof of concept for bitter-truth pattern
   owner: bitter-truth
-  contact:
-    name: Lewis Prior
-
-servers:
-  local:
-    type: local
-    path: ../tools/echo.nu
 
 models:
   EchoInput:
     description: Input for the echo tool
     type: object
     fields:
-      - name: context
+      context:
         type: object
         description: Execution context
         required: false
-        config:
-          $ref: "../common.yaml#/models/ExecutionContext"
-      - name: message
+      message:
         type: string
         description: The message to echo
         required: true
@@ -35,28 +26,20 @@ models:
     description: Output from the echo tool
     type: object
     fields:
-      - name: echo
+      echo:
         type: string
         description: The original message
         required: true
-      - name: reversed
+      reversed:
         type: string
         description: The message reversed
         required: true
-      - name: length
+      length:
         type: integer
         description: Length of the message
         required: true
         minimum: 0
-      - name: was_dry_run
+      was_dry_run:
         type: boolean
         description: Whether this was a dry-run
         required: true
-
-quality:
-  type: SodaCL
-  specification:
-    checks:
-      - echo must equal message
-      - length must equal len(message)
-      - reversed must equal message reversed

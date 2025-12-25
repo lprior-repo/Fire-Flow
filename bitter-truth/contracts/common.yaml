@@ -10,52 +10,40 @@ models:
     description: Context passed to every tool invocation
     type: object
     fields:
-      - name: trace_id
+      trace_id:
         type: string
         description: Trace ID for distributed tracing (from Kestra execution.id)
         required: true
-      - name: dry_run
+      dry_run:
         type: boolean
         description: If true, tool validates input but performs no side effects
         required: false
-        default: false
-      - name: timeout_seconds
+      timeout_seconds:
         type: integer
         description: Timeout in seconds
         required: false
-        default: 30
 
   ToolResponse:
     description: Standard wrapper for all tool outputs
     type: object
     fields:
-      - name: success
+      success:
         type: boolean
         description: Whether the tool succeeded
         required: true
-      - name: data
+      data:
         type: object
         description: The actual output data (tool-specific)
         required: false
-      - name: error
+      error:
         type: string
         description: Error message if success=false
         required: false
-      - name: trace_id
+      trace_id:
         type: string
         description: Echo back trace_id for correlation
         required: false
-      - name: duration_ms
-        type: integer
+      duration_ms:
+        type: double
         description: Execution duration in milliseconds
         required: false
-
-  ErrorCode:
-    description: Standard error codes
-    type: string
-    enum:
-      - INVALID_INPUT
-      - TIMEOUT
-      - INTERNAL
-      - NOT_FOUND
-      - PERMISSION_DENIED
