@@ -1,0 +1,61 @@
+dataContractSpecification: 0.9.3
+id: bitter-truth-common
+info:
+  title: Bitter Truth Common Types
+  version: 1.0.0
+  description: Shared types for all bitter-truth tools
+
+models:
+  ExecutionContext:
+    description: Context passed to every tool invocation
+    type: object
+    fields:
+      - name: trace_id
+        type: string
+        description: Trace ID for distributed tracing (from Kestra execution.id)
+        required: true
+      - name: dry_run
+        type: boolean
+        description: If true, tool validates input but performs no side effects
+        required: false
+        default: false
+      - name: timeout_seconds
+        type: integer
+        description: Timeout in seconds
+        required: false
+        default: 30
+
+  ToolResponse:
+    description: Standard wrapper for all tool outputs
+    type: object
+    fields:
+      - name: success
+        type: boolean
+        description: Whether the tool succeeded
+        required: true
+      - name: data
+        type: object
+        description: The actual output data (tool-specific)
+        required: false
+      - name: error
+        type: string
+        description: Error message if success=false
+        required: false
+      - name: trace_id
+        type: string
+        description: Echo back trace_id for correlation
+        required: false
+      - name: duration_ms
+        type: integer
+        description: Execution duration in milliseconds
+        required: false
+
+  ErrorCode:
+    description: Standard error codes
+    type: string
+    enum:
+      - INVALID_INPUT
+      - TIMEOUT
+      - INTERNAL
+      - NOT_FOUND
+      - PERMISSION_DENIED

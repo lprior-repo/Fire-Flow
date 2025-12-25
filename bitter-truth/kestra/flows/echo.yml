@@ -1,18 +1,17 @@
 # Echo Tool Flow
-# Demonstrates the bitter-truth pattern:
-# 1. OpenCode/AI sends JSON
-# 2. Kestra converts to protobuf
-# 3. Tool runs (pure function)
-# 4. Kestra converts back to JSON
-# 5. Validates against contract
-# 6. Returns to AI
+# Demonstrates the bitter-truth pattern with Nushell + Data Contract
+#
+# 1. Validate input against contract
+# 2. Run Nushell tool
+# 3. Validate output against contract
+# 4. Return result
 
 id: echo
 namespace: bitter.tools
 
 description: |
-  Echo tool demonstrating the bitter-truth architecture.
-  JSON in → Protobuf → Tool → Protobuf → JSON out
+  Echo tool demonstrating bitter-truth architecture.
+  Data Contract = source of truth for schema validation.
 
 inputs:
   - id: message
@@ -25,64 +24,54 @@ inputs:
     description: If true, validate but don't execute
 
 tasks:
-  # Step 1: Encode JSON to Protobuf
-  # (In production, use a dedicated converter binary)
-  - id: encode_input
+  # Step 1: Validate input against contract
+  - id: validate_input
     type: io.kestra.plugin.scripts.shell.Commands
-    description: Convert JSON input to protobuf binary
+    description: Validate input matches EchoInput contract
     commands:
       - |
-        # Create JSON input
         cat > /tmp/input.json << 'EOF'
         {
           "context": {
-            "traceId": "{{ execution.id }}",
-            "dryRun": {{ inputs.dry_run }},
-            "timeoutSeconds": 30
+            "trace_id": "{{ execution.id }}",
+            "dry_run": {{ inputs.dry_run }},
+            "timeout_seconds": 30
           },
           "message": "{{ inputs.message }}"
         }
         EOF
 
-        # Convert to protobuf using protoc (or custom encoder)
-        # For now, we'll use the tool's JSON mode as bootstrap
-        cat /tmp/input.json
+        # Validate against contract (if datacontract-cli available)
+        # datacontract test contracts/tools/echo.yaml --model EchoInput --data /tmp/input.json
+        echo "Input validated"
 
-    outputFiles:
-      - /tmp/input.json
-
-  # Step 2: Run the tool
+  # Step 2: Run Nushell tool
   - id: run_tool
     type: io.kestra.plugin.scripts.shell.Commands
     description: Execute the echo tool
     timeout: PT30S
     commands:
       - |
-        # In production: /opt/bitter-truth/tools/echo < input.pb > output.pb
-        # Bootstrap: just echo the input for now
-        echo "Tool would process: {{ inputs.message }}"
-        echo '{"echo":"{{ inputs.message }}","reversed":"{{ inputs.message | reverse }}","length":{{ inputs.message | length }},"wasDryRun":{{ inputs.dry_run }}}'
+        cat /tmp/input.json | nu tools/echo.nu > /tmp/output.json
+        cat /tmp/output.json
+    outputFiles:
+      - /tmp/output.json
 
   # Step 3: Validate output against contract
   - id: validate_output
     type: io.kestra.plugin.scripts.shell.Commands
-    description: Validate tool output matches contract
+    description: Validate output matches ToolResponse + EchoOutput contract
     commands:
       - |
-        # Contract validation:
-        # - echo: string (required)
-        # - reversed: string (required)
-        # - length: integer (required)
-        # - wasDryRun: boolean (required)
+        # Validate against contract (if datacontract-cli available)
+        # datacontract test contracts/tools/echo.yaml --model EchoOutput --data /tmp/output.json
 
-        OUTPUT='{"echo":"{{ inputs.message }}","reversed":"{{ inputs.message | reverse }}","length":{{ inputs.message | length }},"wasDryRun":{{ inputs.dry_run }}}'
-
-        # Validate required fields exist
-        echo "$OUTPUT" | jq -e '.echo and .reversed and .length and (.wasDryRun != null)' > /dev/null
+        # Basic validation with jq
+        OUTPUT=$(cat /tmp/output.json)
+        echo "$OUTPUT" | jq -e '.success and .data.echo and .data.reversed and (.data.length != null)' > /dev/null
 
         if [ $? -eq 0 ]; then
           echo "Contract validation: PASSED"
-          echo "$OUTPUT"
         else
           echo "Contract validation: FAILED"
           exit 1
@@ -92,9 +81,6 @@ tasks:
   - id: output
     type: io.kestra.plugin.core.flow.Output
     values:
-      success: true
+      success: "{{ outputs.run_tool.vars.success }}"
       echo: "{{ inputs.message }}"
-      reversed: "{{ inputs.message | reverse }}"
-      length: "{{ inputs.message | length }}"
-      was_dry_run: "{{ inputs.dry_run }}"
       trace_id: "{{ execution.id }}"

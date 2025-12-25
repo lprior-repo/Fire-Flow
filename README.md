@@ -1,45 +1,43 @@
 # bitter-truth
 
-Contract-driven orchestration with Rust tools and Kestra.
+Contract-driven orchestration with Nushell and Data Contracts.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      OPENCODE                               │
 │              (Text in, Text/JSON out)                       │
 └─────────────────────────┬───────────────────────────────────┘
-                          │ Text prompt + JSON response
+                          │
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                       KESTRA                                │
 │                                                             │
 │   - Orchestrates everything                                 │
-│   - Manages state (internal DB or filesystem)               │
-│   - Handles async (tools are sync)                          │
-│   - Retry, timeout, scheduling                              │
-│   - Converts JSON ↔ Protobuf at boundaries                  │
+│   - Validates against Data Contracts                        │
+│   - Handles async, retry, scheduling                        │
+│   - Quality gates with thresholds                           │
 └─────────────────────────┬───────────────────────────────────┘
-                          │ Protobuf bytes (stdin)
+                          │ JSON (stdin)
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     RUST TOOL                               │
+│                    NUSHELL TOOL                             │
 │                                                             │
-│   - Small (50-200 lines)                                    │
-│   - Pure function (no side effects)                         │
-│   - Protobuf in, Protobuf out                               │
-│   - No network (Kestra does HTTP)                           │
-│   - No filesystem (Kestra passes data)                      │
-│   - Type safety = correctness                               │
+│   - Small scripts (50-100 lines)                            │
+│   - Pure functions on structured data                       │
+│   - JSON in, JSON out                                       │
+│   - Native tables, records, pipelines                       │
+│   - No compilation needed                                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ## Philosophy
 
-**AI is a worker, not a decision-maker.**
+**Data Contract is God.**
 
-1. Define the contract (what success looks like)
+1. Define the contract (YAML schema = source of truth)
 2. AI generates code (the only non-deterministic step)
-3. Deterministic validation gates
-4. Loop with structured feedback until all gates pass
+3. Validate against contract (deterministic)
+4. Loop with feedback until contract satisfied
 
 The orchestrator owns the process. AI figures out *how* to satisfy the contract.
 
@@ -47,55 +45,87 @@ The orchestrator owns the process. AI figures out *how* to satisfy the contract.
 
 ```
 bitter-truth/
-├── proto/                    # Protobuf contracts (source of truth)
-│   └── bitter/
-│       ├── common.proto      # ExecutionContext, ToolResponse
-│       └── tools/
-│           └── echo.proto    # EchoInput, EchoOutput
-├── crates/
-│   ├── bitter-sdk/           # SDK for building tools
+├── contracts/                    # Data Contract YAML (source of truth)
+│   ├── common.yaml               # Shared types (ExecutionContext, ToolResponse)
 │   └── tools/
-│       └── echo/             # Example tool (374KB binary)
+│       └── echo.yaml             # Echo tool contract
+├── tools/
+│   └── echo.nu                   # Nushell tool (~50 lines)
 └── kestra/
     └── flows/
-        ├── echo.yml                      # Basic tool invocation
+        ├── echo.yml                      # Tool invocation
         └── code-generation-with-gates.yml # Contract-driven AI loop
 ```
 
 ## Quick Start
 
 ```bash
-# Build all tools
-cd bitter-truth
-cargo build --release
+# Install dependencies
+pacman -S nushell               # or: cargo install nu
+pipx install datacontract-cli   # or: pip install datacontract-cli
 
-# Run echo tool
-echo '...' | ./target/release/echo
+# Run echo tool directly
+echo '{"message": "hello"}' | nu bitter-truth/tools/echo.nu
 
-# Binary size
-ls -lh target/release/echo  # ~374KB
+# Validate contract
+datacontract test bitter-truth/contracts/tools/echo.yaml
 ```
 
 ## Writing a Tool
 
-Tools are pure functions: protobuf in → protobuf out.
+Tools are Nushell scripts: JSON in → JSON out.
 
-```rust
-use bitter_sdk::{log_info, run_tool};
-use bitter_sdk::proto::bitter::tools::{EchoInput, EchoOutput};
+```nu
+#!/usr/bin/env nu
+# Contract: contracts/tools/echo.yaml
 
-fn main() -> anyhow::Result<()> {
-    run_tool(|input: EchoInput| {
-        log_info("processing", &[("msg", &input.message)]);
+def main [] {
+    let input = $in | from json
+    let message = $input.message
 
-        Ok(EchoOutput {
-            echo: input.message.clone(),
-            reversed: input.message.chars().rev().collect(),
-            length: input.message.len() as i32,
-            was_dry_run: input.context.map(|c| c.dry_run).unwrap_or(false),
-        })
-    })
+    {
+        success: true
+        data: {
+            echo: $message
+            reversed: ($message | split chars | reverse | str join)
+            length: ($message | str length)
+        }
+    } | to json
 }
+```
+
+## Data Contracts
+
+Contracts define the schema. Everything validates against them.
+
+```yaml
+dataContractSpecification: 0.9.3
+id: echo-tool
+info:
+  title: Echo Tool Contract
+  version: 1.0.0
+
+models:
+  EchoInput:
+    type: object
+    fields:
+      - name: message
+        type: string
+        required: true
+        minLength: 1
+
+  EchoOutput:
+    type: object
+    fields:
+      - name: echo
+        type: string
+        required: true
+      - name: reversed
+        type: string
+        required: true
+      - name: length
+        type: integer
+        required: true
 ```
 
 ## Contract-Driven Pattern
@@ -106,29 +136,18 @@ Kestra workflow with quality gates:
 tasks:
   # AI generates (non-deterministic)
   - id: generate
-    type: shell
     command: opencode -p "{{ contract }}"
 
-  # Gate 1: Syntax (deterministic)
-  - id: gate_syntax
-    type: shell
-    command: cargo check
+  # Gate 1: Contract validation (deterministic)
+  - id: gate_contract
+    command: datacontract test contracts/tool.yaml --data output.json
 
   # Gate 2: Tests (deterministic)
   - id: gate_tests
-    type: shell
-    command: cargo test
+    command: nu test.nu
 
-  # Gate 3: Coverage threshold (deterministic)
-  - id: gate_coverage
-    type: shell
-    command: |
-      COVERAGE=$(cargo llvm-cov --json | jq '.data[0].totals.lines.percent')
-      [ $COVERAGE -ge 80 ]
-
-  # Loop back with feedback if gates fail
+  # Loop back if gates fail
   - id: feedback_loop
-    type: choice
     conditions:
       - "{{ all_gates_passed }}" → done
       - default → generate
@@ -136,19 +155,21 @@ tasks:
 
 ## Why This Architecture?
 
-| Aspect | Before (Go+JSON) | Now (Rust+Protobuf) |
-|--------|------------------|---------------------|
-| Binary size | 5-10MB | ~374KB |
-| Startup | ~20ms | ~5ms |
-| Schema | Runtime validation | Compile-time |
-| Type safety | Good | Excellent |
-| Cross-language | Manual | Generated from .proto |
+| Aspect | Rust+Protobuf | Nushell+DataContract |
+|--------|---------------|----------------------|
+| Compilation | Required | None |
+| Binary size | 374KB | 0 (script) |
+| Schema format | .proto | YAML |
+| Validation | Compile-time | Runtime (CLI) |
+| Learning curve | Medium | Low |
+| Iteration speed | Slow | Fast |
+| Structured data | Manual | Native |
 
 ## Requirements
 
-- Rust 1.70+
-- protoc (protobuf compiler)
-- Kestra (for orchestration)
+- [Nushell](https://www.nushell.sh/) 0.90+
+- [Data Contract CLI](https://cli.datacontract.com/) 0.10+
+- [Kestra](https://kestra.io/) (for orchestration)
 
 ## License
 
