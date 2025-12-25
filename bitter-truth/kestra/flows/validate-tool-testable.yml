@@ -104,7 +104,7 @@ tasks:
   # STEP 3: RUN VALIDATION (or dry-run)
   - id: validate
     type: io.kestra.plugin.scripts.shell.Commands
-    description: Validate via DataContract + validate.nu (or mock if test_mode)
+    description: Validate via DataContract + validate.nu
     taskRunner:
       type: io.kestra.plugin.core.runner.Process
     env:

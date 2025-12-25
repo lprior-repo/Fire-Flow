@@ -62,8 +62,28 @@ def main [] {
         exit 0
     }
 
-    # Run the tool, capturing stdout and stderr separately
-    let tool_input_json = $tool_input | to json -r
+    # Validate tool_input is serializable to JSON before piping
+    let tool_input_json = try {
+        $tool_input | to json -r
+    } catch {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { level: "error", msg: "tool_input is not serializable to JSON", trace_id: $trace_id, tool_input: $tool_input } | to json -r | print -e
+        { success: false, error: "tool_input is not valid JSON-serializable data", trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 1
+    }
+
+    # Validate the JSON is parseable (roundtrip test)
+    let validation_check = try {
+        $tool_input_json | from json
+        true
+    } catch {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { level: "error", msg: "serialized tool_input is not valid JSON", trace_id: $trace_id, json_preview: ($tool_input_json | str substring 0..200) } | to json -r | print -e
+        { success: false, error: "tool_input serialization produced invalid JSON", trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 1
+    }
+
+    { level: "debug", msg: "tool_input validated successfully", json_length: ($tool_input_json | str length) } | to json -r | print -e
 
     # Execute and capture result
     let result = do {
@@ -85,15 +105,14 @@ def main [] {
         was_dry_run: false
     }
 
-    # Always exit 0 so the flow can continue to self-heal on failures
-    # The success field indicates whether the tool actually worked
     if $result.exit_code == 0 {
         { success: true, data: $output, trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
+        exit 0
     } else {
         # Capture tool's stderr as the error message for debugging
         let tool_error = if ($result.stderr | str length) > 0 { $result.stderr } else { "tool exited with non-zero code" }
         { level: "warn", msg: "tool failed", exit_code: $result.exit_code, error: $tool_error } | to json -r | print -e
         { success: false, data: $output, error: $tool_error, trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
-        # DON'T exit 1 - let flow continue to self-heal
+        exit 1
     }
 }

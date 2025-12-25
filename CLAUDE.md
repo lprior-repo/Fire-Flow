@@ -45,7 +45,7 @@ def kestra-api [endpoint: string, --method: string = "GET", --data: string = ""]
 
 - **URL**: http://localhost:4200
 - **Namespace**: `bitter`
-- **Main Flow**: `contract-loop`
+- **Main Flow**: `contract-loop-modular`
 - **Credentials**: Stored in `pass` at:
   - `kestra/username` - email address
   - `kestra/password` - password
@@ -87,10 +87,10 @@ Generate -> Gate -> Pass or Self-Heal -> Escalate after N failures
 
 ```bash
 # Deploy flow
-kestra-api "/api/v1/flows" --method PUT --data "$(cat bitter-truth/kestra/flows/contract-loop.yml)"
+kestra-api "/api/v1/flows" --method PUT --data "$(cat bitter-truth/kestra/flows/contract-loop-modular.yml)"
 
 # Trigger execution
-kestra-api "/api/v1/executions/bitter/contract-loop" --method POST --data '{
+kestra-api "/api/v1/executions/bitter/contract-loop-modular" --method POST --data '{
   "contract": "/path/to/contract.yaml",
   "task": "description of what to generate",
   "input_json": "{}",
@@ -150,9 +150,9 @@ kestra-api "/api/v1/executions/bitter/contract-loop" --method POST --data '{
 
 ### Nushell Helper (`tools/kestra.nu`)
 ```bash
-nu tools/kestra.nu flow bitter contract-loop      # Get flow
-nu tools/kestra.nu run bitter contract-loop '{}'  # Trigger
-nu tools/kestra.nu status {exec-id}               # Status
+nu tools/kestra.nu flow bitter contract-loop-modular      # Get flow
+nu tools/kestra.nu run bitter contract-loop-modular '{}'  # Trigger
+nu tools/kestra.nu status {exec-id}                       # Status
 ```
 
 ### Rust CLI (`tools/kestra-ws`)

@@ -115,8 +115,29 @@ OUTPUT ONLY THE CODE INSIDE A ```nushell CODE BLOCK:"
     $prompt | save -f $prompt_file
     { level: "debug", msg: "saved prompt to file", prompt_file: $prompt_file } | to json -r | print -e
 
-    # Build the opencode command - explicitly use local/qwen3-coder model
-    let model = "local/qwen3-coder"
+    # Get model from env with fallback to default
+    let model = $env.MODEL? | default "local/qwen3-coder"
+    { level: "info", msg: "model configured", model: $model, from_env: ($env.MODEL? != null) } | to json -r | print -e
+
+    # Validate model exists - list available models and check
+    { level: "debug", msg: "validating model availability" } | to json -r | print -e
+    let models_check = (^opencode models list | complete)
+    if $models_check.exit_code != 0 {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { level: "error", msg: "failed to list models", stderr: $models_check.stderr } | to json -r | print -e
+        { success: false, error: "Failed to validate model availability", trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 1
+    }
+
+    # Check if the configured model is in the list
+    let available_models = $models_check.stdout | lines | where { |line| $line != "" }
+    if not ($available_models | any { |m| $m =~ $model }) {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { level: "error", msg: "model not found", requested: $model, available: $available_models } | to json -r | print -e
+        { success: false, error: $"Model '($model)' not available. Set MODEL env variable to one of: ($available_models | str join ', ')", trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 1
+    }
+
     let opencode_cmd = $"timeout --foreground --kill-after=5 ($timeout_seconds)s opencode run -m ($model)"
     { level: "debug", msg: "opencode command", cmd: $opencode_cmd, model: $model, prompt_file: $prompt_file } | to json -r | print -e
 
@@ -167,9 +188,8 @@ OUTPUT ONLY THE CODE INSIDE A ```nushell CODE BLOCK:"
     }
 
     # Use llm-cleaner to extract nushell code from potentially chatty output
-    # Look for llm-cleaner in multiple locations
+    # Look for llm-cleaner in standard locations using dynamic paths
     let llm_cleaner_paths = [
-        "/home/lewis/src/Fire-Flow/tools/llm-cleaner/target/release/llm-cleaner"
         ($env.PWD | path join "tools/llm-cleaner/target/release/llm-cleaner")
         ($env.HOME | path join "src/Fire-Flow/tools/llm-cleaner/target/release/llm-cleaner")
         "llm-cleaner"  # Check if in PATH
@@ -177,16 +197,29 @@ OUTPUT ONLY THE CODE INSIDE A ```nushell CODE BLOCK:"
 
     let llm_cleaner = (
         $llm_cleaner_paths
-        | each { if (($in | path exists)) { $in } else { null } }
+        | each { |p|
+            if ($p | str starts-with "/") {
+                # Absolute path - check existence
+                if ($p | path exists) { $p } else { null }
+            } else if ($p == "llm-cleaner") {
+                # Check if in PATH using which
+                let which_result = (which $p | complete)
+                if $which_result.exit_code == 0 { $p } else { null }
+            } else {
+                # Relative path - check existence
+                if ($p | path exists) { $p } else { null }
+            }
+        }
         | compact
         | first
         | default null
     )
 
-    if ($llm_cleaner | is-empty) {
-        { level: "warn", msg: "llm-cleaner not found - will use raw output", tried_paths: $llm_cleaner_paths } | to json -r | print -e
-        # Fallback to raw output without cleaning
-        $raw_output | save -f $output_path
+    if ($llm_cleaner == null) {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { level: "error", msg: "llm-cleaner not found in any standard location", tried_paths: $llm_cleaner_paths } | to json -r | print -e
+        { success: false, error: $"llm-cleaner not found. Tried: ($llm_cleaner_paths | to json)", trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 1
     } else {
         { level: "debug", msg: "cleaning LLM output with llm-cleaner", cleaner_path: $llm_cleaner } | to json -r | print -e
 

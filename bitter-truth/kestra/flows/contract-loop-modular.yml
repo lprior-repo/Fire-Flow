@@ -66,7 +66,6 @@ tasks:
           timeout_seconds: 300
           trace_id: "{{ vars.trace_id }}"
           tools_dir: "{{ inputs.tools_dir }}"
-          test_mode: false
 
       # 2. EXECUTE: Run the generated tool with input
       - id: execute_step
@@ -81,7 +80,6 @@ tasks:
           trace_id: "{{ vars.trace_id }}"
           tools_dir: "{{ inputs.tools_dir }}"
           timeout_seconds: 60
-          test_mode: false
 
       # 3. VALIDATE: Contract validation (draconian)
       - id: validate_step
@@ -94,7 +92,6 @@ tasks:
           trace_id: "{{ vars.trace_id }}"
           tools_dir: "{{ inputs.tools_dir }}"
           dry_run: false
-          test_mode: false
 
       # 4. CHECK: Did we pass?
       - id: check_pass

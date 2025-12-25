@@ -62,6 +62,35 @@ def main [] {
 
     { level: "info", msg: "validating data", trace_id: $trace_id, contract: $contract_path, server: $server, dry_run: $dry_run } | to json -r | print -e
 
+    # Extract the data file path from the contract's servers section
+    let contract_content = try {
+        open $contract_path | from yaml
+    } catch {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { level: "error", msg: "failed to parse contract as YAML", trace_id: $trace_id } | to json -r | print -e
+        { success: false, error: "Invalid contract YAML", trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 1
+    }
+
+    # Check if the data file exists (the contract's servers.{server}.path)
+    let data_file_path = try {
+        $contract_content | get servers | get $server | get path
+    } catch {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { level: "error", msg: $"contract missing servers.($server).path", trace_id: $trace_id } | to json -r | print -e
+        { success: false, error: $"Contract does not define servers.($server).path", trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 1
+    }
+
+    if not ($data_file_path | path exists) {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { level: "error", msg: "data file does not exist", trace_id: $trace_id, data_file: $data_file_path, server: $server } | to json -r | print -e
+        { success: false, error: $"Data file does not exist: ($data_file_path)", trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 1
+    }
+
+    { level: "debug", msg: "data file exists", data_file: $data_file_path } | to json -r | print -e
+
     # Run datacontract test against the server
     let result = do {
         datacontract test --server $server $contract_path
@@ -97,8 +126,9 @@ def main [] {
 
     if $is_valid {
         { success: true, data: $output, trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
+        exit 0
     } else {
         { success: false, data: $output, error: "contract validation failed", trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
-        # DON'T exit 1 - let flow continue to self-heal
+        exit 1
     }
 }

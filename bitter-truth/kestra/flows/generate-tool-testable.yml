@@ -96,10 +96,10 @@ tasks:
         level: ERROR
         message: "Input validation failed: {{ taskrun.stderr }}"
 
-  # STEP 2: GENERATE (conditionally skip if test_mode)
+  # STEP 2: GENERATE
   - id: generate_code
     type: io.kestra.plugin.scripts.shell.Commands
-    description: AI generates Nushell via opencode (or stub if test_mode)
+    description: AI generates Nushell via opencode
     taskRunner:
       type: io.kestra.plugin.core.runner.Process
     timeout: PT10M
