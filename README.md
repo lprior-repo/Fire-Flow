@@ -1,60 +1,97 @@
 # bitter-truth
 
-Contract-driven AI orchestration.
+AI-operated, contract-driven orchestration.
 
 ```
 ┌────────────────────────────────────────────┐
-│              DATA CONTRACT                 │
-│           (Source of Truth)                │
+│           HUMAN (Architect)                │
 │                                            │
-│  Defines what success looks like (YAML)    │
+│  Writes: Contracts, Prompts                │
+│  Never writes: Nushell                     │
+└─────────────────────┬──────────────────────┘
+                      │ Intent
+                      ▼
+┌────────────────────────────────────────────┐
+│              DATA CONTRACT                 │
+│            (Source of Truth)               │
+│                                            │
+│  The law. Draconian validation.            │
 └─────────────────────┬──────────────────────┘
                       │
                       ▼
 ┌────────────────────────────────────────────┐
-│                 KESTRA                     │
-│              (Orchestrator)                │
+│            OPENCODE (Compiler)             │
 │                                            │
-│  Loop: Generate → Validate → Pass/Retry   │
+│  Compiles intent → Nushell                 │
+│  Self-heals on contract failure            │
 └─────────────────────┬──────────────────────┘
                       │
-        ┌─────────────┼─────────────┐
-        ▼             ▼             ▼
-   ┌─────────┐   ┌─────────┐   ┌─────────┐
-   │ OpenCode│   │  Gate   │   │  Gate   │
-   │   (AI)  │   │Contract │   │  Tests  │
-   │         │   │         │   │         │
-   │Generate │   │Validate │   │  Run    │
-   └─────────┘   └─────────┘   └─────────┘
-       ↑              │             │
-       └──────────────┴─────────────┘
-              Feedback Loop
+                      ▼
+┌────────────────────────────────────────────┐
+│           KESTRA (Orchestrator)            │
+│                                            │
+│  Generate → Gate → Pass or Self-Heal       │
+│  Escalate after N failures                 │
+└─────────────────────┬──────────────────────┘
+                      │
+                      ▼
+┌────────────────────────────────────────────┐
+│           NUSHELL (Execution)              │
+│                                            │
+│  Structured data in/out                    │
+│  AI-authored exclusively                   │
+└────────────────────────────────────────────┘
 ```
 
-## The Pattern
+## The 3 Laws
 
-```yaml
-loop:
-  - generate    # AI produces output (non-deterministic)
-  - gate        # Validate against contract (deterministic)
-  - gate        # Run tests (deterministic)
-  - check       # All passed? Done : Retry with feedback
+See [LAWS.md](bitter-truth/LAWS.md) for full doctrine.
+
+| Law | Rule | Violation |
+|-----|------|-----------|
+| 1. No-Human Zone | AI writes all Nushell | Human cognitive overload |
+| 2. Contract is Law | Draconian validation, self-heal | Hallucinated destruction |
+| 3. Ejection Seat | Rosetta Stone for Python | Vendor lock-in |
+
+## Why Nushell?
+
+**AI Goal**: "Filter rows where CPU > 80%"
+
+```bash
+# Bash: Text parsing, AI gets wrong 20% of time
+top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}'
+
+# Nushell: Structured data, AI gets right 99% of time
+sys | get cpu | where usage > 80
 ```
 
-**Contract is God. AI is a worker.**
+For an AI operator, structured data is the path of least resistance.
 
 ## Structure
 
 ```
 bitter-truth/
-├── contracts/           # Data Contract YAML (source of truth)
-│   ├── common.yaml      # Shared types
-│   └── tools/
-│       └── echo.yaml    # Example contract
-├── tools/
-│   └── echo.nu          # Nushell tool
+├── LAWS.md                      # The doctrine
+├── contracts/                   # DataContract YAML (humans write this)
+│   ├── common.yaml
+│   └── tools/echo.yaml
+├── tools/                       # Nushell scripts (AI writes this)
+│   └── echo.nu
+├── prompts/
+│   └── rosetta-stone.md         # Nushell → Python migration
 └── kestra/flows/
-    └── contract-loop.yml  # THE workflow
+    └── contract-loop.yml        # The workflow
+```
+
+## The Workflow
+
+```yaml
+loop:
+  - generate     # AI compiles intent → Nushell
+  - execute      # Run the script
+  - gate         # Validate against contract
+  - check        # Pass? Done : Self-heal
+  - escalate     # After N failures → fix PROMPT not CODE
 ```
 
 ## Quick Start
@@ -67,28 +104,13 @@ pacman -S nushell
 # Validate contract
 datacontract lint bitter-truth/contracts/tools/echo.yaml
 
-# Run tool
+# Run AI-generated tool
 echo '{"message": "hello"}' | nu bitter-truth/tools/echo.nu
-```
-
-## The Workflow
-
-```yaml
-# kestra/flows/contract-loop.yml
-inputs:
-  - contract: path/to/contract.yaml
-  - task: "What the AI should generate"
-
-tasks:
-  - generate    # opencode -p "..."
-  - gate        # datacontract test
-  - gate        # nu test.nu
-  - check       # pass or retry with feedback
 ```
 
 ## Requirements
 
-- [Nushell](https://www.nushell.sh/)
-- [Data Contract CLI](https://cli.datacontract.com/)
-- [Kestra](https://kestra.io/)
-- [OpenCode](https://opencode.ai/)
+- [Nushell](https://www.nushell.sh/) - Structured shell
+- [Data Contract CLI](https://cli.datacontract.com/) - Schema validation
+- [Kestra](https://kestra.io/) - Orchestration
+- [OpenCode](https://opencode.ai/) - AI compilation

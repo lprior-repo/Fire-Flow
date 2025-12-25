@@ -1,12 +1,12 @@
-# bitter-truth: Contract-Driven Loop
+# bitter-truth: Contract-Driven Loop with Self-Healing
+#
+# THE 3 LAWS:
+# 1. No-Human Zone: AI writes all Nushell, humans write contracts
+# 2. Contract is Law: Validation is draconian, self-heal on failure
+# 3. Ejection Seat: Rosetta Stone exists for Python migration
 #
 # THE PATTERN:
-# 1. Contract defines success (Data Contract YAML)
-# 2. AI generates (non-deterministic)
-# 3. Gates validate (deterministic)
-# 4. Loop until all gates pass
-#
-# Orchestrator owns the process. AI is a worker.
+# Generate → Gate → Pass or Self-Heal → Escalate after N failures
 
 id: contract-loop
 namespace: bitter
@@ -14,64 +14,137 @@ namespace: bitter
 inputs:
   - id: contract
     type: STRING
-    description: Path to data contract (source of truth)
+    description: Path to DataContract (source of truth)
 
   - id: task
     type: STRING
-    description: What the AI should generate
+    description: Natural language intent (what AI should generate)
 
   - id: max_attempts
     type: INT
     defaults: 5
+    description: Attempts before escalating to human (to fix PROMPT, not code)
 
 variables:
   attempt: 1
-  feedback: "Initial attempt"
+  feedback: "Initial generation"
+  escalated: false
 
 tasks:
-  # LOOP: Generate → Validate → Pass or Retry
+  # LOOP: Generate → Validate → Self-Heal or Escalate
   - id: loop
     type: io.kestra.plugin.core.flow.ForEach
     values: "{{ range(1, inputs.max_attempts + 1) }}"
     tasks:
 
-      # AI GENERATES (non-deterministic)
+      # 1. AI GENERATES NUSHELL (Law 1: AI is exclusive author)
       - id: generate
         type: io.kestra.plugin.scripts.shell.Commands
+        description: AI compiles intent → Nushell
         commands:
           - |
             opencode -p "
-            Task: {{ inputs.task }}
-            Contract: {{ inputs.contract }}
-            Feedback: {{ vars.feedback }}
-            Attempt: {{ taskrun.value }}/{{ inputs.max_attempts }}
-            " > /tmp/output.json
+            TASK: {{ inputs.task }}
 
-      # GATE 1: Contract validation (deterministic)
+            CONTRACT (Law 2 - this is GOD):
+            $(cat {{ inputs.contract }})
+
+            PREVIOUS FEEDBACK:
+            {{ vars.feedback }}
+
+            ATTEMPT: {{ taskrun.value }}/{{ inputs.max_attempts }}
+
+            Generate a Nushell script that:
+            1. Reads JSON from stdin
+            2. Produces output matching the contract EXACTLY
+            3. Logs to stderr as JSON
+            4. Returns exit 0 on success, exit 1 on failure
+
+            Output ONLY the Nushell script, no explanation.
+            " > /tmp/tool.nu
+
+            chmod +x /tmp/tool.nu
+
+      # 2. EXECUTE THE GENERATED TOOL
+      - id: execute
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: Run the AI-generated Nushell
+        commands:
+          - |
+            echo '{{ inputs.input_json | default("{}")  }}' | nu /tmp/tool.nu > /tmp/output.json 2>/tmp/logs.json
+            echo "Exit code: $?"
+
+      # 3. GATE: CONTRACT VALIDATION (Law 2: Draconian validation)
       - id: gate_contract
         type: io.kestra.plugin.scripts.shell.Commands
+        description: DataContract is the law
         commands:
-          - datacontract test {{ inputs.contract }} --data /tmp/output.json
+          - |
+            datacontract test {{ inputs.contract }} --data /tmp/output.json 2>&1
+            if [ $? -ne 0 ]; then
+              echo "CONTRACT VIOLATION DETECTED"
+              exit 1
+            fi
 
-      # GATE 2: Tests pass (deterministic)
-      - id: gate_tests
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - nu test.nu
-
-      # CHECK: All gates passed?
-      - id: check
+      # 4. CHECK: Did we pass?
+      - id: check_pass
         type: io.kestra.plugin.core.flow.If
-        condition: "{{ outputs.gate_contract.exitCode == 0 and outputs.gate_tests.exitCode == 0 }}"
+        condition: "{{ outputs.gate_contract.exitCode == 0 }}"
         then:
+          - id: success
+            type: io.kestra.plugin.core.log.Log
+            message: "Contract satisfied on attempt {{ taskrun.value }}"
           - id: done
             type: io.kestra.plugin.core.flow.End
             state: SUCCESS
 
-      # FEEDBACK: Collect errors for next attempt
-      - id: feedback
+      # 5. SELF-HEAL: Collect feedback for next attempt (Law 2)
+      - id: self_heal
         type: io.kestra.plugin.core.flow.Set
+        description: AI will use this feedback to fix itself
         values:
           feedback: |
-            Contract errors: {{ outputs.gate_contract.stdErr }}
-            Test errors: {{ outputs.gate_tests.stdErr }}
+            ATTEMPT {{ taskrun.value }} FAILED.
+
+            CONTRACT ERRORS:
+            {{ outputs.gate_contract.stdErr }}
+
+            OUTPUT PRODUCED:
+            $(cat /tmp/output.json)
+
+            LOGS:
+            $(cat /tmp/logs.json)
+
+            FIX THE NUSHELL SCRIPT TO SATISFY THE CONTRACT.
+
+  # 6. ESCALATE: After max attempts, page human (Law 2)
+  - id: escalate
+    type: io.kestra.plugin.core.flow.If
+    condition: "{{ vars.attempt >= inputs.max_attempts }}"
+    then:
+      - id: page_human
+        type: io.kestra.plugin.core.log.Log
+        level: ERROR
+        message: |
+          ESCALATION REQUIRED (Law 2)
+
+          The AI failed to satisfy the contract after {{ inputs.max_attempts }} attempts.
+
+          DO NOT FIX THE NUSHELL SCRIPT.
+          FIX THE PROMPT OR THE CONTRACT.
+
+          Task: {{ inputs.task }}
+          Contract: {{ inputs.contract }}
+          Last feedback: {{ vars.feedback }}
+
+      - id: fail
+        type: io.kestra.plugin.core.flow.End
+        state: FAILED
+
+  # 7. OUTPUT
+  - id: output
+    type: io.kestra.plugin.core.flow.Output
+    values:
+      success: "{{ outputs.check_pass is defined }}"
+      attempts: "{{ vars.attempt }}"
+      output_file: "/tmp/output.json"
