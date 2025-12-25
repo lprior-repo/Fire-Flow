@@ -30,6 +30,7 @@ def main [] {
 
     # Extract validation configuration
     let contract_path = $input.contract_path? | default ""
+    let output_path = $input.output_path? | default ""
     let server = $input.server? | default "local"
 
     # Validate required fields
@@ -64,7 +65,7 @@ def main [] {
 
     # Extract the data file path from the contract's servers section
     let contract_content = try {
-        open $contract_path | from yaml
+        open --raw $contract_path | from yaml
     } catch {
         let dur = (date now) - $start | into int | $in / 1000000
         { level: "error", msg: "failed to parse contract as YAML", trace_id: $trace_id } | to json -r | print -e
@@ -72,14 +73,18 @@ def main [] {
         exit 1
     }
 
-    # Check if the data file exists (the contract's servers.{server}.path)
-    let data_file_path = try {
-        $contract_content | get servers | get $server | get path
-    } catch {
-        let dur = (date now) - $start | into int | $in / 1000000
-        { level: "error", msg: $"contract missing servers.($server).path", trace_id: $trace_id } | to json -r | print -e
-        { success: false, error: $"Contract does not define servers.($server).path", trace_id: $trace_id, duration_ms: $dur } | to json | print
-        exit 1
+    # Use output_path if provided, otherwise get from contract
+    let data_file_path = if ($output_path | is-not-empty) {
+        $output_path
+    } else {
+        try {
+            $contract_content | get servers | get $server | get path
+        } catch {
+            let dur = (date now) - $start | into int | $in / 1000000
+            { level: "error", msg: $"contract missing servers.($server).path and no output_path provided", trace_id: $trace_id } | to json -r | print -e
+            { success: false, error: $"Contract does not define servers.($server).path", trace_id: $trace_id, duration_ms: $dur } | to json | print
+            exit 1
+        }
     }
 
     if not ($data_file_path | path exists) {
@@ -90,6 +95,20 @@ def main [] {
     }
 
     { level: "debug", msg: "data file exists", data_file: $data_file_path } | to json -r | print -e
+
+    # Get the expected path from the contract for datacontract CLI
+    let contract_expected_path = try {
+        $contract_content | get servers | get $server | get path
+    } catch {
+        ""
+    }
+
+    # If output_path differs from contract's path, copy the file temporarily
+    let needs_copy = ($output_path | is-not-empty) and ($contract_expected_path | is-not-empty) and ($data_file_path != $contract_expected_path)
+    if $needs_copy {
+        { level: "debug", msg: "copying output to contract's expected location", from: $data_file_path, to: $contract_expected_path } | to json -r | print -e
+        cp $data_file_path $contract_expected_path
+    }
 
     # Run datacontract test against the server
     let result = do {
@@ -124,11 +143,12 @@ def main [] {
         print $"::($kestra_output)::"
     }
 
+    # For self-healing pattern, ALWAYS exit 0 (so workflow continues)
+    # Use success field to indicate validation result
     if $is_valid {
         { success: true, data: $output, trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
-        exit 0
     } else {
         { success: false, data: $output, error: "contract validation failed", trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
-        exit 1
     }
+    exit 0
 }
