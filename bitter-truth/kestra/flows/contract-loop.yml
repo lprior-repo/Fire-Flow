@@ -1,0 +1,77 @@
+# bitter-truth: Contract-Driven Loop
+#
+# THE PATTERN:
+# 1. Contract defines success (Data Contract YAML)
+# 2. AI generates (non-deterministic)
+# 3. Gates validate (deterministic)
+# 4. Loop until all gates pass
+#
+# Orchestrator owns the process. AI is a worker.
+
+id: contract-loop
+namespace: bitter
+
+inputs:
+  - id: contract
+    type: STRING
+    description: Path to data contract (source of truth)
+
+  - id: task
+    type: STRING
+    description: What the AI should generate
+
+  - id: max_attempts
+    type: INT
+    defaults: 5
+
+variables:
+  attempt: 1
+  feedback: "Initial attempt"
+
+tasks:
+  # LOOP: Generate → Validate → Pass or Retry
+  - id: loop
+    type: io.kestra.plugin.core.flow.ForEach
+    values: "{{ range(1, inputs.max_attempts + 1) }}"
+    tasks:
+
+      # AI GENERATES (non-deterministic)
+      - id: generate
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - |
+            opencode -p "
+            Task: {{ inputs.task }}
+            Contract: {{ inputs.contract }}
+            Feedback: {{ vars.feedback }}
+            Attempt: {{ taskrun.value }}/{{ inputs.max_attempts }}
+            " > /tmp/output.json
+
+      # GATE 1: Contract validation (deterministic)
+      - id: gate_contract
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - datacontract test {{ inputs.contract }} --data /tmp/output.json
+
+      # GATE 2: Tests pass (deterministic)
+      - id: gate_tests
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - nu test.nu
+
+      # CHECK: All gates passed?
+      - id: check
+        type: io.kestra.plugin.core.flow.If
+        condition: "{{ outputs.gate_contract.exitCode == 0 and outputs.gate_tests.exitCode == 0 }}"
+        then:
+          - id: done
+            type: io.kestra.plugin.core.flow.End
+            state: SUCCESS
+
+      # FEEDBACK: Collect errors for next attempt
+      - id: feedback
+        type: io.kestra.plugin.core.flow.Set
+        values:
+          feedback: |
+            Contract errors: {{ outputs.gate_contract.stdErr }}
+            Test errors: {{ outputs.gate_tests.stdErr }}
