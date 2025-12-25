@@ -1,6 +1,4 @@
-# The 3 Laws of bitter-truth
-
-This system operates under a fundamental paradigm shift:
+# The 2 Laws of bitter-truth
 
 **AI is the operator. Humans are the architects.**
 
@@ -84,48 +82,11 @@ models:
 
 ---
 
-## Law 3: The Ejection Seat
-
-**Maintain escape velocity from Nushell.**
-
-Nushell has <1% market share. If it dies, the AI loses its hands. Every
-Nushell script must be translatable to Python/Pandas via the Rosetta Stone.
-
-### The Rosetta Stone
-
-A prompt that lives in `prompts/rosetta-stone.md` can translate any
-bitter-truth Nushell script to equivalent Python:
-
-```
-Nushell:  sys | get cpu | where usage > 80
-Python:   df[df['usage'] > 80]
-```
-
-### Escape Conditions
-
-Trigger migration to Python if:
-
-- Nushell project goes unmaintained (>6 months no release)
-- Critical bug with no fix
-- Performance bottleneck in Nushell itself
-
-### Migration Path
-
-```
-1. Run rosetta-stone prompt on all .nu files
-2. Generate equivalent Python scripts
-3. Update Kestra flows to call Python
-4. DataContracts unchanged (they're language-agnostic)
-```
-
----
-
 ## Summary
 
-| Law | Rule | Violation Means |
-|-----|------|-----------------|
+| Law | Rule | Violation |
+|-----|------|-----------|
 | 1 | AI writes all Nushell | Human cognitive overload |
 | 2 | Contract validates all output | Hallucinated destruction |
-| 3 | Rosetta Stone exists | Vendor lock-in to dead project |
 
-**The AI is the operator. The contract is the law. The exit is always open.**
+**The AI is the operator. The contract is the law.**
