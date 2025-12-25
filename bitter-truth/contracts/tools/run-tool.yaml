@@ -1,0 +1,61 @@
+dataContractSpecification: 0.9.3
+id: bitter-truth-tool-run-tool
+info:
+  title: Run Tool Contract
+  version: 1.0.0
+  description: Execute a nushell tool with captured output/logs
+  owner: bitter-truth
+
+servers:
+  local:
+    type: local
+    path: /tmp/run-tool-output.json
+    format: json
+
+models:
+  RunToolInput:
+    description: Input for the run-tool utility
+    type: object
+    fields:
+      context:
+        type: object
+        description: Execution context (trace_id, dry_run, timeout_seconds)
+        required: false
+      tool_path:
+        type: string
+        description: Path to the nushell tool to execute
+        required: true
+        minLength: 1
+      tool_input:
+        type: object
+        description: JSON input to pass to the tool via stdin
+        required: false
+      output_path:
+        type: string
+        description: Path to save tool stdout (default /tmp/output.json)
+        required: false
+      logs_path:
+        type: string
+        description: Path to save tool stderr (default /tmp/logs.json)
+        required: false
+
+  RunToolOutput:
+    description: Output from the run-tool utility
+    type: object
+    fields:
+      exit_code:
+        type: integer
+        description: Exit code from the tool
+        required: true
+      output_path:
+        type: string
+        description: Path where stdout was saved
+        required: true
+      logs_path:
+        type: string
+        description: Path where stderr was saved
+        required: true
+      was_dry_run:
+        type: boolean
+        description: Whether this was a dry-run
+        required: true

@@ -1,12 +1,18 @@
 # bitter-truth: Contract-Driven Loop with Self-Healing
 #
-# THE 3 LAWS:
+# THE 4 LAWS:
 # 1. No-Human Zone: AI writes all Nushell, humans write contracts
 # 2. Contract is Law: Validation is draconian, self-heal on failure
-# 3. Ejection Seat: Rosetta Stone exists for Python migration
+# 3. We Set the Standard: Human defines target, AI hits it
+# 4. Orchestrator Runs Everything: Kestra owns execution
 #
 # THE PATTERN:
-# Generate → Gate → Pass or Self-Heal → Escalate after N failures
+# Generate -> Gate -> Pass or Self-Heal -> Escalate after N failures
+#
+# REQUIREMENTS:
+# - nushell (nu) installed and in PATH
+# - datacontract-cli installed
+# - opencode CLI for AI generation
 
 id: contract-loop
 namespace: bitter
@@ -20,18 +26,26 @@ inputs:
     type: STRING
     description: Natural language intent (what AI should generate)
 
+  - id: input_json
+    type: STRING
+    defaults: "{}"
+    description: JSON input for the generated tool
+
   - id: max_attempts
     type: INT
     defaults: 5
     description: Attempts before escalating to human (to fix PROMPT, not code)
 
+  - id: tools_dir
+    type: STRING
+    defaults: "./bitter-truth/tools"
+    description: Directory containing bitter-truth tools
+
 variables:
-  attempt: 1
   feedback: "Initial generation"
-  escalated: false
 
 tasks:
-  # LOOP: Generate → Validate → Self-Heal or Escalate
+  # LOOP: Generate -> Validate -> Self-Heal or Escalate
   - id: loop
     type: io.kestra.plugin.core.flow.ForEach
     values: "{{ range(1, inputs.max_attempts + 1) }}"
@@ -40,14 +54,16 @@ tasks:
       # 1. AI GENERATES NUSHELL (Law 1: AI is exclusive author)
       - id: generate
         type: io.kestra.plugin.scripts.shell.Commands
-        description: AI compiles intent → Nushell
+        description: AI compiles intent -> Nushell
+        runner: PROCESS
         commands:
           - |
-            opencode -p "
-            TASK: {{ inputs.task }}
+            nu -c '
+            let contract_content = (open "{{ inputs.contract }}")
+            let prompt = $"TASK: {{ inputs.task }}
 
             CONTRACT (Law 2 - this is GOD):
-            $(cat {{ inputs.contract }})
+            ($contract_content)
 
             PREVIOUS FEEDBACK:
             {{ vars.feedback }}
@@ -60,31 +76,45 @@ tasks:
             3. Logs to stderr as JSON
             4. Returns exit 0 on success, exit 1 on failure
 
-            Output ONLY the Nushell script, no explanation.
-            " > /tmp/tool.nu
+            Output ONLY the Nushell script, no explanation."
 
-            chmod +x /tmp/tool.nu
+            $prompt | opencode -p $in | save -f /tmp/tool.nu
+            print "Generated tool saved to /tmp/tool.nu"
+            '
 
       # 2. EXECUTE THE GENERATED TOOL
       - id: execute
         type: io.kestra.plugin.scripts.shell.Commands
-        description: Run the AI-generated Nushell
+        description: Run the AI-generated Nushell via run-tool.nu
+        runner: PROCESS
         commands:
           - |
-            echo '{{ inputs.input_json | default("{}")  }}' | nu /tmp/tool.nu > /tmp/output.json 2>/tmp/logs.json
-            echo "Exit code: $?"
+            nu -c '
+            let run_input = {
+              tool_path: "/tmp/tool.nu"
+              tool_input: ({{ inputs.input_json }} | from json)
+              output_path: "/tmp/output.json"
+              logs_path: "/tmp/logs.json"
+              context: { trace_id: "{{ execution.id }}" }
+            }
+            $run_input | to json | nu {{ inputs.tools_dir }}/run-tool.nu
+            '
 
       # 3. GATE: CONTRACT VALIDATION (Law 2: Draconian validation)
       - id: gate_contract
         type: io.kestra.plugin.scripts.shell.Commands
-        description: DataContract is the law
+        description: DataContract is the law - validate via validate.nu
+        runner: PROCESS
         commands:
           - |
-            datacontract test {{ inputs.contract }} --data /tmp/output.json 2>&1
-            if [ $? -ne 0 ]; then
-              echo "CONTRACT VIOLATION DETECTED"
-              exit 1
-            fi
+            nu -c '
+            let validate_input = {
+              contract_path: "{{ inputs.contract }}"
+              server: "local"
+              context: { trace_id: "{{ execution.id }}" }
+            }
+            $validate_input | to json | nu {{ inputs.tools_dir }}/validate.nu
+            '
 
       # 4. CHECK: Did we pass?
       - id: check_pass
@@ -100,51 +130,65 @@ tasks:
 
       # 5. SELF-HEAL: Collect feedback for next attempt (Law 2)
       - id: self_heal
-        type: io.kestra.plugin.core.flow.Set
-        description: AI will use this feedback to fix itself
-        values:
-          feedback: |
-            ATTEMPT {{ taskrun.value }} FAILED.
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: Collect feedback for AI to fix itself
+        runner: PROCESS
+        commands:
+          - |
+            nu -c '
+            let output = (open /tmp/output.json | to json)
+            let logs = (open /tmp/logs.json)
+            let feedback = $"ATTEMPT {{ taskrun.value }} FAILED.
 
             CONTRACT ERRORS:
             {{ outputs.gate_contract.stdErr }}
 
             OUTPUT PRODUCED:
-            $(cat /tmp/output.json)
+            ($output)
 
             LOGS:
-            $(cat /tmp/logs.json)
+            ($logs)
 
-            FIX THE NUSHELL SCRIPT TO SATISFY THE CONTRACT.
+            FIX THE NUSHELL SCRIPT TO SATISFY THE CONTRACT."
 
-  # 6. ESCALATE: After max attempts, page human (Law 2)
+            # Store feedback for next iteration
+            $feedback | save -f /tmp/feedback.txt
+            print $feedback
+            '
+
+      # 6. UPDATE FEEDBACK VARIABLE
+      - id: update_feedback
+        type: io.kestra.plugin.core.flow.Set
+        values:
+          feedback: "{{ read('/tmp/feedback.txt') }}"
+
+  # 7. ESCALATE: After max attempts, page human (Law 2)
   - id: escalate
-    type: io.kestra.plugin.core.flow.If
-    condition: "{{ vars.attempt >= inputs.max_attempts }}"
-    then:
-      - id: page_human
-        type: io.kestra.plugin.core.log.Log
-        level: ERROR
-        message: |
-          ESCALATION REQUIRED (Law 2)
+    type: io.kestra.plugin.core.log.Log
+    level: ERROR
+    message: |
+      ESCALATION REQUIRED (Law 2)
 
-          The AI failed to satisfy the contract after {{ inputs.max_attempts }} attempts.
+      The AI failed to satisfy the contract after {{ inputs.max_attempts }} attempts.
 
-          DO NOT FIX THE NUSHELL SCRIPT.
-          FIX THE PROMPT OR THE CONTRACT.
+      DO NOT FIX THE NUSHELL SCRIPT.
+      FIX THE PROMPT OR THE CONTRACT.
 
-          Task: {{ inputs.task }}
-          Contract: {{ inputs.contract }}
-          Last feedback: {{ vars.feedback }}
+      Task: {{ inputs.task }}
+      Contract: {{ inputs.contract }}
+      Last feedback: {{ vars.feedback }}
 
-      - id: fail
-        type: io.kestra.plugin.core.flow.End
-        state: FAILED
+  - id: fail
+    type: io.kestra.plugin.core.flow.End
+    state: FAILED
 
-  # 7. OUTPUT
-  - id: output
-    type: io.kestra.plugin.core.flow.Output
-    values:
-      success: "{{ outputs.check_pass is defined }}"
-      attempts: "{{ vars.attempt }}"
-      output_file: "/tmp/output.json"
+outputs:
+  - id: success
+    type: BOOLEAN
+    value: "{{ outputs.check_pass is defined }}"
+  - id: attempts
+    type: INTEGER
+    value: "{{ taskrun.value }}"
+  - id: output_file
+    type: STRING
+    value: "/tmp/output.json"

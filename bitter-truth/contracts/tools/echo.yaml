@@ -6,40 +6,53 @@ info:
   description: Echo tool - proof of concept for bitter-truth pattern
   owner: bitter-truth
 
-models:
-  EchoInput:
-    description: Input for the echo tool
-    type: object
-    fields:
-      context:
-        type: object
-        description: Execution context
-        required: false
-      message:
-        type: string
-        description: The message to echo
-        required: true
-        minLength: 1
-        maxLength: 10000
+servers:
+  local:
+    type: local
+    path: /tmp/output.json
+    format: json
 
-  EchoOutput:
-    description: Output from the echo tool
+models:
+  # The actual output structure (ToolResponse wrapping EchoOutput)
+  EchoResponse:
+    description: Full response from the echo tool
     type: object
     fields:
-      echo:
-        type: string
-        description: The original message
-        required: true
-      reversed:
-        type: string
-        description: The message reversed
-        required: true
-      length:
-        type: integer
-        description: Length of the message
-        required: true
-        minimum: 0
-      was_dry_run:
+      success:
         type: boolean
-        description: Whether this was a dry-run
+        description: Whether the tool succeeded
         required: true
+      data:
+        type: object
+        description: The EchoOutput data
+        required: false
+        fields:
+          echo:
+            type: string
+            description: The original message
+            required: true
+          reversed:
+            type: string
+            description: The message reversed
+            required: true
+          length:
+            type: integer
+            description: Length of the message
+            required: true
+            minimum: 0
+          was_dry_run:
+            type: boolean
+            description: Whether this was a dry-run
+            required: true
+      error:
+        type: string
+        description: Error message if success=false
+        required: false
+      trace_id:
+        type: string
+        description: Trace ID for correlation
+        required: false
+      duration_ms:
+        type: double
+        description: Execution duration in milliseconds
+        required: false

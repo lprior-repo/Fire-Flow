@@ -1,0 +1,57 @@
+dataContractSpecification: 0.9.3
+id: bitter-truth-tool-validate
+info:
+  title: Validate Contract
+  version: 1.0.0
+  description: Test data against a DataContract schema
+  owner: bitter-truth
+
+servers:
+  local:
+    type: local
+    path: /tmp/validate-output.json
+    format: json
+
+models:
+  ValidateInput:
+    description: Input for the validate utility
+    type: object
+    fields:
+      context:
+        type: object
+        description: Execution context (trace_id, dry_run, timeout_seconds)
+        required: false
+      contract_path:
+        type: string
+        description: Path to the DataContract YAML file
+        required: true
+        minLength: 1
+      server:
+        type: string
+        description: Server name from the contract to test against (default local)
+        required: false
+
+  ValidateOutput:
+    description: Output from the validate utility
+    type: object
+    fields:
+      valid:
+        type: boolean
+        description: Whether the contract passed linting
+        required: true
+      errors:
+        type: array
+        description: List of lint error messages
+        required: true
+      stdout:
+        type: string
+        description: Raw stdout from datacontract lint
+        required: false
+      stderr:
+        type: string
+        description: Raw stderr from datacontract lint
+        required: false
+      was_dry_run:
+        type: boolean
+        description: Whether this was a dry-run
+        required: true
