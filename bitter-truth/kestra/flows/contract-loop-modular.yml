@@ -56,7 +56,7 @@ tasks:
       - id: generate_step
         type: io.kestra.plugin.core.flow.Subflow
         namespace: bitter
-        flowId: generate-tool
+        flowId: generate-tool-testable
         inputs:
           contract_path: "{{ inputs.contract }}"
           task: "{{ inputs.task }}"
@@ -66,12 +66,13 @@ tasks:
           timeout_seconds: 300
           trace_id: "{{ vars.trace_id }}"
           tools_dir: "{{ inputs.tools_dir }}"
+          test_mode: false
 
       # 2. EXECUTE: Run the generated tool with input
       - id: execute_step
         type: io.kestra.plugin.core.flow.Subflow
         namespace: bitter
-        flowId: execute-tool
+        flowId: execute-tool-testable
         inputs:
           tool_path: "/tmp/tool.nu"
           tool_input: "{{ inputs.input_json }}"
@@ -79,18 +80,21 @@ tasks:
           logs_path: "/tmp/logs.json"
           trace_id: "{{ vars.trace_id }}"
           tools_dir: "{{ inputs.tools_dir }}"
+          timeout_seconds: 60
+          test_mode: false
 
       # 3. VALIDATE: Contract validation (draconian)
       - id: validate_step
         type: io.kestra.plugin.core.flow.Subflow
         namespace: bitter
-        flowId: validate-tool
+        flowId: validate-tool-testable
         inputs:
           contract_path: "{{ inputs.contract }}"
           output_path: "/tmp/output.json"
           trace_id: "{{ vars.trace_id }}"
-          dry_run: false
           tools_dir: "{{ inputs.tools_dir }}"
+          dry_run: false
+          test_mode: false
 
       # 4. CHECK: Did we pass?
       - id: check_pass

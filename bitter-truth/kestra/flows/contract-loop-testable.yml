@@ -1,0 +1,264 @@
+# bitter-truth: Contract-Driven Loop with Self-Healing (TESTABLE VERSION)
+#
+# Orchestrator using testable components with:
+# - Input validation
+# - Test mode support
+# - Structured error handling
+# - Better observability
+# - Explicit error paths
+#
+# THE 4 LAWS:
+# 1. No-Human Zone: AI writes all Nushell, humans write contracts
+# 2. Contract is Law: Validation is draconian, self-heal on failure
+# 3. We Set the Standard: Human defines target, AI hits it
+# 4. Orchestrator Runs Everything: Kestra owns execution
+
+id: contract-loop-testable
+namespace: bitter
+
+inputs:
+  - id: contract
+    type: STRING
+    description: Path to DataContract (source of truth)
+    required: true
+
+  - id: task
+    type: STRING
+    description: Natural language intent (what AI should generate)
+    required: true
+
+  - id: input_json
+    type: STRING
+    defaults: "{}"
+    description: JSON input for the generated tool
+
+  - id: max_attempts
+    type: INT
+    defaults: 5
+    description: Attempts before escalating to human
+
+  - id: tools_dir
+    type: STRING
+    defaults: "./bitter-truth/tools"
+    description: Directory containing bitter-truth tools
+
+  - id: test_mode
+    type: BOOLEAN
+    defaults: false
+    description: If true, use stub tools instead of real AI/validation
+
+  - id: timeout_seconds
+    type: INT
+    defaults: 300
+    description: Timeout for AI generation
+
+variables:
+  feedback: "Initial generation"
+  trace_id: "{{ execution.id }}"
+  attempt_count: "0"
+
+tasks:
+  # INITIALIZATION: Log workflow start and configuration
+  - id: init
+    type: io.kestra.plugin.core.log.Log
+    level: INFO
+    message: |
+      🚀 Starting bitter-truth workflow
+      Trace ID: {{ vars.trace_id }}
+      Contract: {{ inputs.contract }}
+      Task: {{ inputs.task }}
+      Max Attempts: {{ inputs.max_attempts }}
+      Test Mode: {{ inputs.test_mode }}
+      Input: {{ inputs.input_json }}
+
+  # VALIDATION: Check inputs exist and are valid before loop
+  - id: check_contract_exists
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Validate contract file exists
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - |
+        nu -c '
+        if not ("{{ inputs.contract }}" | path exists) {
+          print "FATAL: Contract file not found: {{ inputs.contract }}"
+          exit 1
+        }
+        print "Contract file exists"
+        exit 0
+        '
+    onFailure:
+      - id: fail_no_contract
+        type: io.kestra.plugin.core.execution.Exit
+        state: FAILED
+
+  # LOOP: Generate -> Execute -> Validate -> Self-Heal or Escalate
+  - id: attempt_loop
+    type: io.kestra.plugin.core.flow.ForEach
+    values: "{{ range(1, inputs.max_attempts + 1) }}"
+    tasks:
+
+      # Log attempt start
+      - id: log_attempt_start
+        type: io.kestra.plugin.core.log.Log
+        level: INFO
+        message: "→ Attempt {{ taskrun.value }}/{{ inputs.max_attempts }} (Trace: {{ vars.trace_id }})"
+
+      # 1. GENERATE: AI generates Nushell from contract + feedback
+      - id: generate_step
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: bitter
+        flowId: generate-tool-testable
+        inputs:
+          contract_path: "{{ inputs.contract }}"
+          task: "{{ inputs.task }}"
+          feedback: "{{ vars.feedback }}"
+          attempt: "{{ taskrun.value }}/{{ inputs.max_attempts }}"
+          output_path: "/tmp/tool.nu"
+          timeout_seconds: {{ inputs.timeout_seconds }}
+          trace_id: "{{ vars.trace_id }}"
+          tools_dir: "{{ inputs.tools_dir }}"
+          test_mode: {{ inputs.test_mode }}
+        onFailure:
+          - id: log_generate_error
+            type: io.kestra.plugin.core.log.Log
+            level: ERROR
+            message: "Generation failed on attempt {{ taskrun.value }}: {{ taskrun.stderr }}"
+
+      # 2. EXECUTE: Run the generated tool with input
+      - id: execute_step
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: bitter
+        flowId: execute-tool-testable
+        inputs:
+          tool_path: "/tmp/tool.nu"
+          tool_input: "{{ inputs.input_json }}"
+          output_path: "/tmp/output.json"
+          logs_path: "/tmp/logs.json"
+          trace_id: "{{ vars.trace_id }}"
+          tools_dir: "{{ inputs.tools_dir }}"
+          timeout_seconds: 60
+          test_mode: {{ inputs.test_mode }}
+        onFailure:
+          - id: log_execute_error
+            type: io.kestra.plugin.core.log.Log
+            level: ERROR
+            message: "Execution failed on attempt {{ taskrun.value }}: {{ taskrun.stderr }}"
+
+      # 3. VALIDATE: Contract validation (draconian)
+      - id: validate_step
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: bitter
+        flowId: validate-tool-testable
+        inputs:
+          contract_path: "{{ inputs.contract }}"
+          output_path: "/tmp/output.json"
+          trace_id: "{{ vars.trace_id }}"
+          tools_dir: "{{ inputs.tools_dir }}"
+          dry_run: false
+          test_mode: {{ inputs.test_mode }}
+
+      # 4. CHECK: Did we pass? (parse JSON response)
+      - id: check_pass
+        type: io.kestra.plugin.core.flow.If
+        condition: |
+          {% set result = outputs.validate_step.validation_result | from_json %}
+          {{ result.success and result.data.valid }}
+        then:
+          # SUCCESS PATH
+          - id: log_success
+            type: io.kestra.plugin.core.log.Log
+            level: INFO
+            message: "✓ Contract satisfied on attempt {{ taskrun.value }}/{{ inputs.max_attempts }}"
+
+          - id: archive_success
+            type: io.kestra.plugin.scripts.shell.Commands
+            description: Archive successful tool for reference
+            taskRunner:
+              type: io.kestra.plugin.core.runner.Process
+            commands:
+              - |
+                mkdir -p /tmp/generated-tools
+                cp /tmp/tool.nu /tmp/generated-tools/tool-{{ vars.trace_id }}-attempt-{{ taskrun.value }}.nu
+
+          - id: success_exit
+            type: io.kestra.plugin.core.execution.Exit
+            state: SUCCESS
+
+      # FAILURE PATH (implicit): Continue to feedback collection
+
+      # 5. SELF-HEAL: Collect feedback for next attempt
+      - id: feedback_step
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: bitter
+        flowId: collect-feedback
+        inputs:
+          output_file: "/tmp/output.json"
+          logs_file: "/tmp/logs.json"
+          validation_errors: "{{ outputs.validate_step.validation_result }}"
+          attempt_number: "{{ taskrun.value }}/{{ inputs.max_attempts }}"
+        onFailure:
+          - id: log_feedback_error
+            type: io.kestra.plugin.core.log.Log
+            level: WARN
+            message: "Feedback collection had issues, using previous feedback"
+
+      # 6. UPDATE: Store feedback and attempt count for next iteration
+      - id: update_feedback
+        type: io.kestra.plugin.core.execution.SetVariables
+        variables:
+          feedback: "{{ outputs.feedback_step.feedback }}"
+          attempt_count: "{{ taskrun.value }}"
+
+      # Log attempt end
+      - id: log_attempt_end
+        type: io.kestra.plugin.core.log.Log
+        level: INFO
+        message: "← Attempt {{ taskrun.value }} failed, will retry (feedback collected)"
+
+  # ESCALATION: Max attempts exceeded
+  - id: log_escalation
+    type: io.kestra.plugin.core.log.Log
+    level: ERROR
+    message: |
+      ⚠️ ESCALATION REQUIRED (Law 2)
+
+      The AI failed to satisfy the contract after {{ inputs.max_attempts }} attempts.
+
+      DO NOT FIX THE NUSHELL SCRIPT.
+      FIX THE PROMPT OR THE CONTRACT.
+
+      Trace ID: {{ vars.trace_id }}
+      Task: {{ inputs.task }}
+      Contract: {{ inputs.contract }}
+      Last Feedback: {{ vars.feedback }}
+
+  - id: fail
+    type: io.kestra.plugin.core.execution.Exit
+    state: FAILED
+
+outputs:
+  - id: success
+    type: BOOLEAN
+    value: "{{ taskrun.outcomes contains('success_exit') }}"
+    description: Whether workflow succeeded
+
+  - id: output_file
+    type: STRING
+    value: "/tmp/output.json"
+    description: Final tool output
+
+  - id: tool_file
+    type: STRING
+    value: "/tmp/tool.nu"
+    description: Final generated tool
+
+  - id: trace_id
+    type: STRING
+    value: "{{ vars.trace_id }}"
+    description: Workflow trace ID
+
+  - id: attempts_made
+    type: INT
+    value: "{{ vars.attempt_count | int }}"
+    description: Number of attempts made before success/failure

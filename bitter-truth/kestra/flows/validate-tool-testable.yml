@@ -1,0 +1,196 @@
+# Modular Component: Validate Tool Output Against Contract (TESTABLE)
+# With input validation, structured output, and error paths
+#
+# INPUT: contract_path, output_path
+# OUTPUT: validation_result (JSON with success, valid, errors fields)
+# TESTED: Contract existence, output parsing, validation logic
+
+id: validate-tool-testable
+namespace: bitter
+description: Validate tool output against DataContract (testable)
+
+inputs:
+  - id: contract_path
+    type: STRING
+    description: Path to DataContract YAML file
+    required: true
+
+  - id: output_path
+    type: STRING
+    defaults: "/tmp/output.json"
+    description: Path to tool output file to validate
+
+  - id: tools_dir
+    type: STRING
+    defaults: "./bitter-truth/tools"
+    description: Directory containing bitter-truth tools
+
+  - id: trace_id
+    type: STRING
+    defaults: ""
+    description: Trace ID for logging
+
+  - id: dry_run
+    type: BOOLEAN
+    defaults: false
+    description: Skip actual validation, just check files exist
+
+  - id: test_mode
+    type: BOOLEAN
+    defaults: false
+    description: If true, use mock validation logic
+
+tasks:
+  # STEP 1: VALIDATE INPUTS
+  - id: validate_inputs
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Check contract and output files exist
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - |
+        nu -c '
+        let contract_path = "{{ inputs.contract_path }}"
+        let output_path = "{{ inputs.output_path }}"
+        let errors = []
+
+        if not ($contract_path | path exists) {
+          $errors += ["Contract file not found: " + $contract_path]
+        }
+
+        if not ($output_path | path exists) {
+          $errors += ["Output file not found: " + $output_path]
+        }
+
+        if ($errors | length) > 0 {
+          let error_msg = ($errors | str join " | ")
+          { level: "error", msg: $error_msg, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+          print { success: false, error: $error_msg, trace_id: "{{ inputs.trace_id }}" } | to json
+          exit 1
+        }
+
+        { level: "info", msg: "Validation inputs valid", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+        print { success: true, inputs_valid: true, trace_id: "{{ inputs.trace_id }}" } | to json
+        '
+    onFailure:
+      - id: log_input_error
+        type: io.kestra.plugin.core.log.Log
+        level: ERROR
+        message: "Validation input check failed: {{ taskrun.stderr }}"
+
+  # STEP 2: VALIDATE OUTPUT JSON
+  - id: validate_output_format
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Verify output file is valid JSON
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - |
+        nu -c '
+        let output_path = "{{ inputs.output_path }}"
+
+        let parsed = try {
+          open $output_path
+          { success: true, valid: true }
+        } catch { |e|
+          { success: false, valid: false, error: $"Failed to parse JSON: ($e.msg)" }
+        }
+
+        if $parsed.success {
+          { level: "info", msg: "Output JSON valid", path: $output_path, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+          print { success: true, output_valid: true, trace_id: "{{ inputs.trace_id }}" } | to json
+        } else {
+          { level: "error", msg: "Invalid output JSON", error: $parsed.error, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+          print { success: false, error: $parsed.error, trace_id: "{{ inputs.trace_id }}" } | to json
+          exit 1
+        }
+        '
+
+  # STEP 3: RUN VALIDATION (or dry-run)
+  - id: validate
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Validate via DataContract + validate.nu (or mock if test_mode)
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    env:
+      PATH: "/home/lewis/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      HOME: /tmp
+      SODA_SEND_ANONYMOUS_USAGE_STATS: "false"
+      KESTRA_EXECUTION_ID: "{{ execution.id }}"
+    commands:
+      - |
+        nu -c '
+        let dry_run = {{ inputs.dry_run }}
+        let test_mode = {{ inputs.test_mode }}
+
+        if $dry_run {
+          # DRY RUN MODE: Skip validation, return success
+          { level: "info", msg: "dry_run=true, skipping validation", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+          print {
+            success: true,
+            data: { valid: true, was_dry_run: true },
+            trace_id: "{{ inputs.trace_id }}"
+          } | to json
+        } else if $test_mode {
+          # TEST MODE: Use mock validation logic
+          { level: "info", msg: "test_mode=true, using mock validation", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+
+          let output = open "{{ inputs.output_path }}"
+
+          # Simple mock: check if data field exists
+          let valid = ($output | get data?) != null
+          let errors = if $valid { [] } else { ["Missing required data field"] }
+
+          print {
+            success: true,
+            data: { valid: $valid, errors: $errors, was_mock: true },
+            trace_id: "{{ inputs.trace_id }}"
+          } | to json
+        } else {
+          # REAL MODE: Call validate.nu with contract
+          { level: "info", msg: "Running contract validation", contract: "{{ inputs.contract_path }}", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+
+          let validate_input = {
+            contract_path: "{{ inputs.contract_path }}"
+            output_path: "{{ inputs.output_path }}"
+            server: "local"
+            context: {
+              trace_id: "{{ inputs.trace_id }}"
+              dry_run: false
+            }
+          }
+
+          let result = do {
+            $validate_input | to json | nu {{ inputs.tools_dir }}/validate.nu
+          } | complete
+
+          if $result.exit_code != 0 {
+            { level: "error", msg: "Validation execution failed", exit_code: $result.exit_code, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+            exit 1
+          }
+
+          let response = $result.stdout | from json
+          print $response | to json
+        }
+        '
+
+outputs:
+  - id: validation_result
+    type: STRING
+    value: "{{ taskrun.outputs.validate.stdout }}"
+    description: JSON response with validation result
+
+  - id: success
+    type: BOOLEAN
+    value: "{{ outputs.validate.exit_code == 0 }}"
+    description: Whether validation completed successfully
+
+  - id: output_file
+    type: STRING
+    value: "{{ inputs.output_path }}"
+    description: Path to validated output
+
+  - id: trace_id
+    type: STRING
+    value: "{{ inputs.trace_id }}"
+    description: Trace ID for observability

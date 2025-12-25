@@ -1,0 +1,220 @@
+# Modular Component: Execute Generated Nushell Tool (TESTABLE)
+# With input validation, error handling, and structured output
+#
+# INPUT: tool_path, tool_input (JSON), output_path, logs_path, trace_id
+# OUTPUT: output_file, logs_file, execution_status, error_message
+# TESTED: Tool existence, JSON validation, output creation
+
+id: execute-tool-testable
+namespace: bitter
+description: Execute generated Nushell tool with JSON input (testable)
+
+inputs:
+  - id: tool_path
+    type: STRING
+    description: Path to generated tool
+    required: true
+
+  - id: tool_input
+    type: STRING
+    defaults: "{}"
+    description: JSON input for the tool
+
+  - id: output_path
+    type: STRING
+    defaults: "/tmp/output.json"
+    description: Where to save tool output
+
+  - id: logs_path
+    type: STRING
+    defaults: "/tmp/logs.json"
+    description: Where to save tool logs
+
+  - id: tools_dir
+    type: STRING
+    defaults: "./bitter-truth/tools"
+    description: Directory containing bitter-truth tools
+
+  - id: trace_id
+    type: STRING
+    defaults: ""
+    description: Trace ID for logging
+
+  - id: timeout_seconds
+    type: INT
+    defaults: 60
+    description: Timeout for tool execution
+
+  - id: test_mode
+    type: BOOLEAN
+    defaults: false
+    description: If true, use mock execution instead of real tool
+
+tasks:
+  # STEP 1: VALIDATE TOOL EXISTS
+  - id: check_tool_exists
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Validate tool file exists before execution
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - |
+        nu -c '
+        let tool_path = "{{ inputs.tool_path }}"
+
+        if not ($tool_path | path exists) {
+          { level: "error", msg: "Tool not found", tool_path: $tool_path, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+          print { success: false, error: $"Tool not found: ($tool_path)", trace_id: "{{ inputs.trace_id }}" } | to json
+          exit 1
+        }
+
+        { level: "info", msg: "Tool exists", tool_path: $tool_path, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+        print { success: true, tool_exists: true, trace_id: "{{ inputs.trace_id }}" } | to json
+        '
+    onFailure:
+      - id: log_tool_check_error
+        type: io.kestra.plugin.core.log.Log
+        level: ERROR
+        message: "Tool validation failed: {{ taskrun.stderr }}"
+
+  # STEP 2: VALIDATE INPUT JSON
+  - id: validate_input
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Validate tool input is valid JSON
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - |
+        nu -c '
+        let input_str = """{{ inputs.tool_input }}"""
+
+        let parsed = try {
+          $input_str | from json
+          { success: true, valid: true }
+        } catch {
+          { success: false, valid: false, error: "Invalid JSON input" }
+        }
+
+        if $parsed.success {
+          { level: "info", msg: "Input JSON valid", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+          print { success: true, valid: true, trace_id: "{{ inputs.trace_id }}" } | to json
+        } else {
+          { level: "error", msg: "Invalid input JSON", error: "{{ inputs.tool_input }}", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+          print { success: false, error: "Invalid JSON input", trace_id: "{{ inputs.trace_id }}" } | to json
+          exit 1
+        }
+        '
+    onFailure:
+      - id: log_input_validation_error
+        type: io.kestra.plugin.core.log.Log
+        level: ERROR
+        message: "Input validation failed"
+
+  # STEP 3: EXECUTE TOOL
+  - id: execute
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Execute tool via run-tool.nu with structured logging
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    timeout: PT2M
+    commands:
+      - |
+        # Write input JSON to temp file (avoids quoting issues)
+        cat > /tmp/exec-input.json << 'INPUTEOF'
+        {{ inputs.tool_input }}
+        INPUTEOF
+
+        nu -c '
+        let test_mode = {{ inputs.test_mode }}
+
+        if $test_mode {
+          # TEST MODE: Create mock output
+          { level: "info", msg: "test_mode=true, creating mock output", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+          {
+            success: true,
+            data: { message: "mock execution" },
+            trace_id: "{{ inputs.trace_id }}",
+            duration_ms: 1.0,
+            was_mock: true
+          } | to json | save -f "{{ inputs.output_path }}"
+
+          { level: "info", msg: "logs: mock execution", trace_id: "{{ inputs.trace_id }}" } | to json | save -f "{{ inputs.logs_path }}"
+
+          print "Tool executed successfully (mock mode)"
+        } else {
+          # REAL MODE: Run tool via run-tool.nu
+          let tool_input = (try { open /tmp/exec-input.json } catch { {} })
+          let run_input = {
+            tool_path: "{{ inputs.tool_path }}"
+            tool_input: $tool_input
+            output_path: "{{ inputs.output_path }}"
+            logs_path: "{{ inputs.logs_path }}"
+            context: { trace_id: "{{ inputs.trace_id }}" }
+          }
+
+          { level: "info", msg: "Starting tool execution", tool_path: "{{ inputs.tool_path }}", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+
+          let exec_result = do {
+            $run_input | to json | nu {{ inputs.tools_dir }}/run-tool.nu
+          } | complete
+
+          if $exec_result.exit_code != 0 {
+            { level: "error", msg: "Tool execution failed", exit_code: $exec_result.exit_code, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+            print $exec_result.stdout
+            exit 1
+          }
+
+          let response = $exec_result.stdout | from json
+          { level: "info", msg: "Tool executed", success: $response.success, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+          print $response | to json
+        }
+        '
+
+  # STEP 4: VALIDATE OUTPUT FILES CREATED
+  - id: validate_output_files
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Verify output and logs files were created
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - |
+        nu -c '
+        let output_path = "{{ inputs.output_path }}"
+        let logs_path = "{{ inputs.logs_path }}"
+
+        let output_exists = ($output_path | path exists)
+        let logs_exists = ($logs_path | path exists)
+
+        if not $output_exists {
+          { level: "error", msg: "Output file not created", path: $output_path, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+          exit 1
+        }
+
+        if not $logs_exists {
+          { level: "warn", msg: "Logs file not created", path: $logs_path, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+        }
+
+        { level: "info", msg: "Output files validated", output: $output_path, logs: $logs_path, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+        print { success: true, output_exists: $output_exists, logs_exists: $logs_exists, trace_id: "{{ inputs.trace_id }}" } | to json
+        '
+
+outputs:
+  - id: output_file
+    type: STRING
+    value: "{{ inputs.output_path }}"
+    description: Path to tool output
+
+  - id: logs_file
+    type: STRING
+    value: "{{ inputs.logs_path }}"
+    description: Path to tool logs
+
+  - id: success
+    type: BOOLEAN
+    value: "{{ outputs.validate_output_files.exit_code == 0 }}"
+    description: Whether execution succeeded
+
+  - id: trace_id
+    type: STRING
+    value: "{{ inputs.trace_id }}"
+    description: Trace ID for observability
