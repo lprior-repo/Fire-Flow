@@ -1,0 +1,50 @@
+syntax = "proto3";
+package bitter;
+
+// ExecutionContext is passed to every tool invocation
+// Provides tracing, timeout, and dry-run capabilities
+message ExecutionContext {
+  // Trace ID for distributed tracing (from Kestra execution.id)
+  string trace_id = 1;
+
+  // If true, tool should validate input but not perform side effects
+  bool dry_run = 2;
+
+  // Timeout in seconds (Kestra enforces this, but tool can use for internal limits)
+  int32 timeout_seconds = 3;
+}
+
+// ToolResponse wraps all tool outputs with metadata
+message ToolResponse {
+  // Whether the tool succeeded
+  bool success = 1;
+
+  // The actual output data (tool-specific protobuf, serialized)
+  bytes data = 2;
+
+  // Error message if success=false
+  string error = 3;
+
+  // Echo back trace_id for correlation
+  string trace_id = 4;
+
+  // Execution duration in milliseconds
+  int64 duration_ms = 5;
+}
+
+// ErrorCode standardizes error types across all tools
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_INVALID_INPUT = 1;
+  ERROR_CODE_TIMEOUT = 2;
+  ERROR_CODE_INTERNAL = 3;
+  ERROR_CODE_NOT_FOUND = 4;
+  ERROR_CODE_PERMISSION_DENIED = 5;
+}
+
+// StructuredError provides detailed error information
+message StructuredError {
+  ErrorCode code = 1;
+  string message = 2;
+  map<string, string> details = 3;
+}

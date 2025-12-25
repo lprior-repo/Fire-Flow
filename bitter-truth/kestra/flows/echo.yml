@@ -1,0 +1,100 @@
+# Echo Tool Flow
+# Demonstrates the bitter-truth pattern:
+# 1. OpenCode/AI sends JSON
+# 2. Kestra converts to protobuf
+# 3. Tool runs (pure function)
+# 4. Kestra converts back to JSON
+# 5. Validates against contract
+# 6. Returns to AI
+
+id: echo
+namespace: bitter.tools
+
+description: |
+  Echo tool demonstrating the bitter-truth architecture.
+  JSON in → Protobuf → Tool → Protobuf → JSON out
+
+inputs:
+  - id: message
+    type: STRING
+    description: Message to echo
+
+  - id: dry_run
+    type: BOOLEAN
+    defaults: false
+    description: If true, validate but don't execute
+
+tasks:
+  # Step 1: Encode JSON to Protobuf
+  # (In production, use a dedicated converter binary)
+  - id: encode_input
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Convert JSON input to protobuf binary
+    commands:
+      - |
+        # Create JSON input
+        cat > /tmp/input.json << 'EOF'
+        {
+          "context": {
+            "traceId": "{{ execution.id }}",
+            "dryRun": {{ inputs.dry_run }},
+            "timeoutSeconds": 30
+          },
+          "message": "{{ inputs.message }}"
+        }
+        EOF
+
+        # Convert to protobuf using protoc (or custom encoder)
+        # For now, we'll use the tool's JSON mode as bootstrap
+        cat /tmp/input.json
+
+    outputFiles:
+      - /tmp/input.json
+
+  # Step 2: Run the tool
+  - id: run_tool
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Execute the echo tool
+    timeout: PT30S
+    commands:
+      - |
+        # In production: /opt/bitter-truth/tools/echo < input.pb > output.pb
+        # Bootstrap: just echo the input for now
+        echo "Tool would process: {{ inputs.message }}"
+        echo '{"echo":"{{ inputs.message }}","reversed":"{{ inputs.message | reverse }}","length":{{ inputs.message | length }},"wasDryRun":{{ inputs.dry_run }}}'
+
+  # Step 3: Validate output against contract
+  - id: validate_output
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Validate tool output matches contract
+    commands:
+      - |
+        # Contract validation:
+        # - echo: string (required)
+        # - reversed: string (required)
+        # - length: integer (required)
+        # - wasDryRun: boolean (required)
+
+        OUTPUT='{"echo":"{{ inputs.message }}","reversed":"{{ inputs.message | reverse }}","length":{{ inputs.message | length }},"wasDryRun":{{ inputs.dry_run }}}'
+
+        # Validate required fields exist
+        echo "$OUTPUT" | jq -e '.echo and .reversed and .length and (.wasDryRun != null)' > /dev/null
+
+        if [ $? -eq 0 ]; then
+          echo "Contract validation: PASSED"
+          echo "$OUTPUT"
+        else
+          echo "Contract validation: FAILED"
+          exit 1
+        fi
+
+  # Step 4: Return structured output
+  - id: output
+    type: io.kestra.plugin.core.flow.Output
+    values:
+      success: true
+      echo: "{{ inputs.message }}"
+      reversed: "{{ inputs.message | reverse }}"
+      length: "{{ inputs.message | length }}"
+      was_dry_run: "{{ inputs.dry_run }}"
+      trace_id: "{{ execution.id }}"

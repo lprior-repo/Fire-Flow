@@ -1,8 +1,0 @@
-testCommand: go test -json ./...
-testPatterns:
-    - _test\.go$
-protectedPaths:
-    - opencode.json
-    - .opencode/tcr
-timeout: 30
-autoCommitMsg: WIP

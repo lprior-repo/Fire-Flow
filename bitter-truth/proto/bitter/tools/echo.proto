@@ -1,0 +1,28 @@
+syntax = "proto3";
+package bitter.tools;
+
+import "bitter/common.proto";
+
+// EchoInput is the input contract for the echo tool
+message EchoInput {
+  // Execution context (tracing, dry-run, timeout)
+  bitter.ExecutionContext context = 1;
+
+  // The message to echo
+  string message = 2;
+}
+
+// EchoOutput is the output contract for the echo tool
+message EchoOutput {
+  // The original message
+  string echo = 1;
+
+  // The message reversed
+  string reversed = 2;
+
+  // Length of the message
+  int32 length = 3;
+
+  // Whether this was a dry-run
+  bool was_dry_run = 4;
+}

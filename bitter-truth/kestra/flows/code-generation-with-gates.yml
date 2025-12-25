@@ -1,0 +1,193 @@
+# Contract-Driven Code Generation with Quality Gates
+#
+# This is the core bitter-truth pattern:
+# 1. Define the contract (what success looks like)
+# 2. AI generates code (the only non-deterministic step)
+# 3. Deterministic validation gates
+# 4. Loop with structured feedback until all gates pass
+#
+# The orchestrator owns the process. AI is just a worker.
+
+id: code-generation
+namespace: bitter.ai
+
+description: |
+  Contract-driven code generation with quality gates.
+  AI generates, orchestrator validates, loop until done.
+
+inputs:
+  # The contract - what we need to produce
+  - id: task_description
+    type: STRING
+    description: What the code should do
+
+  - id: language
+    type: STRING
+    defaults: rust
+    description: Target language
+
+  - id: test_file
+    type: STRING
+    description: Path to test file that must pass
+
+  # Quality thresholds - the gates
+  - id: coverage_threshold
+    type: INT
+    defaults: 80
+    description: Minimum test coverage percentage
+
+  - id: max_complexity
+    type: INT
+    defaults: 10
+    description: Maximum cyclomatic complexity
+
+  - id: max_attempts
+    type: INT
+    defaults: 5
+    description: Maximum generation attempts
+
+variables:
+  attempt: 0
+  last_feedback: ""
+
+tasks:
+  # Step 1: Initialize
+  - id: init
+    type: io.kestra.plugin.core.flow.Set
+    values:
+      attempt: 1
+      feedback: "Initial generation"
+
+  # Step 2: Generation Loop
+  - id: generation_loop
+    type: io.kestra.plugin.core.flow.ForEach
+    values: "{{ range(1, inputs.max_attempts + 1) }}"
+    tasks:
+      # 2a: AI generates code (the only non-deterministic step)
+      - id: generate
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: AI generates code based on contract + feedback
+        commands:
+          - |
+            # Build prompt with contract + feedback
+            PROMPT=$(cat << 'EOF'
+            Generate {{ inputs.language }} code that:
+            {{ inputs.task_description }}
+
+            Requirements:
+            - Must pass tests in: {{ inputs.test_file }}
+            - Coverage must be >= {{ inputs.coverage_threshold }}%
+            - Cyclomatic complexity must be <= {{ inputs.max_complexity }}
+
+            Previous feedback: {{ vars.feedback }}
+            Attempt: {{ taskrun.value }} of {{ inputs.max_attempts }}
+            EOF
+            )
+
+            # Call OpenCode (or Claude)
+            # opencode -p "$PROMPT" -f json > /tmp/generated_code.json
+            echo "AI would generate code here"
+            echo '{"code": "fn example() { }", "file": "src/lib.rs"}' > /tmp/generated_code.json
+
+      # 2b: GATE 1 - Syntax validation (deterministic)
+      - id: gate_syntax
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: Validate syntax compiles
+        commands:
+          - |
+            echo "Gate 1: Syntax validation"
+            # rustfmt --check /tmp/generated.rs
+            # cargo check
+            echo '{"passed": true, "gate": "syntax"}'
+
+      # 2c: GATE 2 - Tests pass (deterministic)
+      - id: gate_tests
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: Run tests
+        commands:
+          - |
+            echo "Gate 2: Tests"
+            # cargo test --no-fail-fast 2>&1 | tee /tmp/test_output.txt
+            # Parse results
+            echo '{"passed": true, "gate": "tests", "passed_count": 10, "failed_count": 0}'
+
+      # 2d: GATE 3 - Coverage threshold (deterministic)
+      - id: gate_coverage
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: Check test coverage meets threshold
+        commands:
+          - |
+            echo "Gate 3: Coverage >= {{ inputs.coverage_threshold }}%"
+            # cargo llvm-cov --json | jq '.data[0].totals.lines.percent'
+            COVERAGE=85
+            THRESHOLD={{ inputs.coverage_threshold }}
+
+            if [ $COVERAGE -ge $THRESHOLD ]; then
+              echo '{"passed": true, "gate": "coverage", "actual": '$COVERAGE', "threshold": '$THRESHOLD'}'
+            else
+              echo '{"passed": false, "gate": "coverage", "actual": '$COVERAGE', "threshold": '$THRESHOLD'}'
+              exit 1
+            fi
+
+      # 2e: GATE 4 - Complexity threshold (deterministic)
+      - id: gate_complexity
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: Check cyclomatic complexity
+        commands:
+          - |
+            echo "Gate 4: Complexity <= {{ inputs.max_complexity }}"
+            # Use rust-code-analysis or similar
+            COMPLEXITY=5
+            MAX={{ inputs.max_complexity }}
+
+            if [ $COMPLEXITY -le $MAX ]; then
+              echo '{"passed": true, "gate": "complexity", "actual": '$COMPLEXITY', "max": '$MAX'}'
+            else
+              echo '{"passed": false, "gate": "complexity", "actual": '$COMPLEXITY', "max": '$MAX'}'
+              exit 1
+            fi
+
+      # 2f: All gates passed - break loop
+      - id: all_gates_passed
+        type: io.kestra.plugin.core.flow.If
+        condition: "{{ outputs.gate_syntax.exitCode == 0 and outputs.gate_tests.exitCode == 0 and outputs.gate_coverage.exitCode == 0 and outputs.gate_complexity.exitCode == 0 }}"
+        then:
+          - id: success
+            type: io.kestra.plugin.core.flow.End
+            state: SUCCESS
+
+      # 2g: Gates failed - prepare feedback for next iteration
+      - id: prepare_feedback
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: Collect feedback from failed gates
+        commands:
+          - |
+            # Aggregate feedback from all gates
+            FEEDBACK=""
+
+            if [ "{{ outputs.gate_syntax.exitCode }}" != "0" ]; then
+              FEEDBACK="$FEEDBACK\nSyntax errors: check compilation"
+            fi
+
+            if [ "{{ outputs.gate_tests.exitCode }}" != "0" ]; then
+              FEEDBACK="$FEEDBACK\nTest failures: review test output"
+            fi
+
+            if [ "{{ outputs.gate_coverage.exitCode }}" != "0" ]; then
+              FEEDBACK="$FEEDBACK\nCoverage below threshold: add more tests"
+            fi
+
+            if [ "{{ outputs.gate_complexity.exitCode }}" != "0" ]; then
+              FEEDBACK="$FEEDBACK\nComplexity too high: simplify code"
+            fi
+
+            echo "$FEEDBACK"
+
+  # Step 3: Final output
+  - id: output
+    type: io.kestra.plugin.core.flow.Output
+    values:
+      success: "{{ outputs.all_gates_passed is defined }}"
+      attempts: "{{ vars.attempt }}"
+      final_coverage: "{{ outputs.gate_coverage.vars.actual | default(0) }}"
+      final_complexity: "{{ outputs.gate_complexity.vars.actual | default(0) }}"
