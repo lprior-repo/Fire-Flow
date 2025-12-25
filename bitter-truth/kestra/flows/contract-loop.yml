@@ -52,10 +52,12 @@ tasks:
     tasks:
 
       # 1. AI GENERATES NUSHELL (Law 1: AI is exclusive author)
+      # Uses generate.nu tool with timeout to prevent orphaned processes
       - id: generate
         type: io.kestra.plugin.scripts.shell.Commands
-        description: AI compiles intent -> Nushell
+        description: AI compiles intent -> Nushell via generate.nu
         runner: PROCESS
+        timeout: PT10M
         env:
           XDG_DATA_HOME: "/tmp"
           XDG_CONFIG_HOME: "/tmp"
@@ -63,33 +65,18 @@ tasks:
         commands:
           - |
             nu -c '
-            let contract_content = (open "{{ inputs.contract }}" | to yaml)
-            let task_desc = "{{ inputs.task }}"
-            let feedback = "{{ vars.feedback }}"
-            let attempt = "{{ taskrun.value }}/{{ inputs.max_attempts }}"
-
-            # Build prompt without string interpolation issues
-            let prompt = [
-              $"TASK: ($task_desc)"
-              ""
-              "CONTRACT - this is the schema to match:"
-              $contract_content
-              ""
-              $"PREVIOUS FEEDBACK: ($feedback)"
-              ""
-              $"ATTEMPT: ($attempt)"
-              ""
-              "Generate a Nushell script that:"
-              "1. Reads JSON from stdin"
-              "2. Produces output matching the contract EXACTLY"
-              "3. Logs to stderr as JSON"
-              "4. Returns exit 0 on success, exit 1 on failure"
-              ""
-              "Output ONLY the Nushell script, no explanation."
-            ] | str join "\n"
-
-            $prompt | opencode -p $in | save -f /tmp/tool.nu
-            print "Generated tool saved to /tmp/tool.nu"
+            let gen_input = {
+              contract_path: "{{ inputs.contract }}"
+              task: "{{ inputs.task }}"
+              feedback: "{{ vars.feedback }}"
+              attempt: "{{ taskrun.value }}/{{ inputs.max_attempts }}"
+              output_path: "/tmp/tool.nu"
+              context: {
+                trace_id: "{{ execution.id }}"
+                timeout_seconds: 300
+              }
+            }
+            $gen_input | to json | nu {{ inputs.tools_dir }}/generate.nu
             '
 
       # 2. EXECUTE THE GENERATED TOOL
