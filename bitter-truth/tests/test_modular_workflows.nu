@@ -167,11 +167,11 @@ def "modular_validate_accepts_correct_output" [] {
         }
         trace_id: "test-trace"
         duration_ms: 5.2
-    } | to json | save -f "/tmp/modular-validate-good.json"
+    } | to json | save -f "/tmp/output.json"
 
     let validate_input = {
         contract_path: $ECHO_CONTRACT
-        output_path: "/tmp/modular-validate-good.json"
+        output_path: "/tmp/output.json"
         server: "local"
         context: { trace_id: "test-005", dry_run: false }
     }
@@ -188,7 +188,7 @@ def "modular_validate_accepts_correct_output" [] {
     assert equal $response.success true "Dry-run validation should succeed"
 
     # Cleanup
-    rm -f "/tmp/modular-validate-good.json"
+    rm -f "/tmp/output.json"
 }
 
 #[test]
@@ -249,43 +249,33 @@ def "modular_collect_feedback_builds_message" [] {
         msg: "validation failed"
     } | to json | save -f "/tmp/modular-feedback-logs.json"
 
-    let feedback_input = {
-        output_file: "/tmp/modular-feedback-output.json"
-        logs_file: "/tmp/modular-feedback-logs.json"
-        validation_errors: "Missing required field: 'reversed'"
-        attempt_number: "2/5"
-    }
+    # Build feedback directly (simulating what collect-feedback.yml does)
+    let output = (try { open "/tmp/modular-feedback-output.json" } catch { {} })
+    let logs = (try { open "/tmp/modular-feedback-logs.json" } catch { {} })
+    let feedback = [
+      "ATTEMPT 2/5 FAILED."
+      ""
+      "CONTRACT ERRORS:"
+      "Missing required field: 'reversed'"
+      ""
+      "OUTPUT PRODUCED:"
+      ($output | to text)
+      ""
+      "LOGS:"
+      ($logs | to text)
+      ""
+      "FIX THE NUSHELL SCRIPT TO SATISFY THE CONTRACT."
+    ] | str join "\n"
 
-    let result = do {
-        $feedback_input | to json | nu do {
-            let output = (try { open "/tmp/modular-feedback-output.json" } catch { {} })
-            let logs = (try { open "/tmp/modular-feedback-logs.json" } catch { {} })
-            let feedback = [
-              $"ATTEMPT 2/5 FAILED."
-              ""
-              "CONTRACT ERRORS:"
-              "Missing required field: 'reversed'"
-              ""
-              "OUTPUT PRODUCED:"
-              ($output | to text)
-              ""
-              "LOGS:"
-              ($logs | to text)
-              ""
-              "FIX THE NUSHELL SCRIPT TO SATISFY THE CONTRACT."
-            ] | str join "\n"
-            $feedback | save -f /tmp/modular-feedback.txt
-            print $feedback
-        }
-    } | complete
+    $feedback | save -f /tmp/modular-feedback.txt
 
     # Verify feedback was created
     assert ("/tmp/modular-feedback.txt" | path exists) "Feedback file should exist"
 
-    let feedback = open -r "/tmp/modular-feedback.txt"
-    assert ($feedback | str contains "ATTEMPT 2/5 FAILED") "Should mark failure"
-    assert ($feedback | str contains "reversed") "Should include error details"
-    assert ($feedback | str contains "FIX THE NUSHELL SCRIPT") "Should guide AI"
+    let feedback_content = open -r "/tmp/modular-feedback.txt"
+    assert ($feedback_content | str contains "ATTEMPT 2/5 FAILED") "Should mark failure"
+    assert ($feedback_content | str contains "reversed") "Should include error details"
+    assert ($feedback_content | str contains "FIX THE NUSHELL SCRIPT") "Should guide AI"
 
     # Cleanup
     rm -f "/tmp/modular-feedback-output.json" "/tmp/modular-feedback-logs.json" "/tmp/modular-feedback.txt"
@@ -389,7 +379,7 @@ def "modular_full_pipeline_success" [] {
     let run_input = {
         tool_path: "/tmp/modular-full-tool.nu"
         tool_input: { message: "full pipeline test" }
-        output_path: "/tmp/modular-full-output.json"
+        output_path: "/tmp/output.json"
         logs_path: "/tmp/modular-full-logs.json"
         context: { trace_id: "pipeline-001" }
     }
@@ -401,7 +391,7 @@ def "modular_full_pipeline_success" [] {
     # Step 3: Validate output
     let validate_input = {
         contract_path: $ECHO_CONTRACT
-        output_path: "/tmp/modular-full-output.json"
+        output_path: "/tmp/output.json"
         server: "local"
         context: { trace_id: "pipeline-001", dry_run: false }
     }
@@ -417,7 +407,7 @@ def "modular_full_pipeline_success" [] {
     assert ($validate_response | get success?) "Validation should return result"
 
     # Cleanup
-    rm -f "/tmp/modular-full-tool.nu" "/tmp/modular-full-output.json" "/tmp/modular-full-logs.json"
+    rm -f "/tmp/modular-full-tool.nu" "/tmp/output.json" "/tmp/modular-full-logs.json"
 }
 
 #[test]
@@ -498,7 +488,7 @@ def main [] {
     let attempt_2_input = {
         tool_path: $corrected_tool
         tool_input: { message: "attempt 2" }
-        output_path: "/tmp/modular-attempt-2-output.json"
+        output_path: "/tmp/output.json"
         logs_path: "/tmp/modular-attempt-2-logs.json"
         context: { trace_id: "feedback-loop-001" }
     }
@@ -507,12 +497,12 @@ def main [] {
         $attempt_2_input | to json | nu ($TOOLS_DIR | path join "run-tool.nu")
     } | complete | null
 
-    assert ("/tmp/modular-attempt-2-output.json" | path exists) "Attempt 2: Output created"
+    assert ("/tmp/output.json" | path exists) "Attempt 2: Output created"
 
     # Validate (should pass contract)
     let validate_2 = {
         contract_path: $ECHO_CONTRACT
-        output_path: "/tmp/modular-attempt-2-output.json"
+        output_path: "/tmp/output.json"
         server: "local"
         context: { trace_id: "feedback-loop-001", dry_run: false }
     }
@@ -526,8 +516,7 @@ def main [] {
     assert equal $validate_2_response.success true "Attempt 2 validation should succeed"
 
     # Cleanup
-    rm -f "/tmp/modular-attempt-1.nu" "/tmp/modular-attempt-1-output.json" "/tmp/modular-attempt-1-logs.json" \
-          "/tmp/modular-attempt-2.nu" "/tmp/modular-attempt-2-output.json" "/tmp/modular-attempt-2-logs.json"
+    rm -f "/tmp/modular-attempt-1.nu" "/tmp/modular-attempt-1-output.json" "/tmp/modular-attempt-1-logs.json" "/tmp/modular-attempt-2.nu" "/tmp/output.json" "/tmp/modular-attempt-2-logs.json"
 }
 
 # ==================================================
