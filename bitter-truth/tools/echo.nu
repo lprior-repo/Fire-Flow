@@ -3,7 +3,7 @@
 #
 # Contract: contracts/tools/echo.yaml
 # Input: JSON from stdin (EchoInput)
-# Output: JSON to stdout (EchoOutput wrapped in ToolResponse)
+# Output: JSON to stdout (ToolResponse wrapping EchoOutput)
 # Logs: JSON to stderr
 
 def main [] {
@@ -18,35 +18,23 @@ def main [] {
     let trace_id = $ctx.trace_id? | default ""
     let dry_run = $ctx.dry_run? | default false
 
-    # Log start
-    let log_start = {
-        level: "info"
-        msg: "processing echo"
-        trace_id: $trace_id
-        message_len: ($input.message | str length)
-        dry_run: $dry_run
-        ts: (date now | format date "%s")
-    }
-    $log_start | to json -r | print -e
-
-    # Validate input
-    if ($input.message? | is-empty) {
+    # Validate input first
+    let message = $input.message? | default ""
+    if ($message | is-empty) {
         let dur = (date now) - $start | into int | $in / 1000000
-        {
-            success: false
-            error: "message is required"
-            trace_id: $trace_id
-            duration_ms: $dur
-        } | to json
-        return
+        { level: "error", msg: "message is required", trace_id: $trace_id } | to json -r | print -e
+        { success: false, error: "message is required", trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 1
     }
+
+    # Log start
+    { level: "info", msg: "processing", trace_id: $trace_id, len: ($message | str length), dry_run: $dry_run } | to json -r | print -e
 
     if $dry_run {
-        { level: "info", msg: "dry-run mode", ts: (date now | format date "%s") } | to json -r | print -e
+        { level: "info", msg: "dry-run mode" } | to json -r | print -e
     }
 
     # Process
-    let message = $input.message
     let output = {
         echo: $message
         reversed: ($message | split chars | reverse | str join)
@@ -54,24 +42,9 @@ def main [] {
         was_dry_run: $dry_run
     }
 
-    # Calculate duration
     let duration_ms = (date now) - $start | into int | $in / 1000000
 
-    # Log completion
-    let log_end = {
-        level: "info"
-        msg: "tool completed"
-        trace_id: $trace_id
-        duration_ms: $duration_ms
-        ts: (date now | format date "%s")
-    }
-    $log_end | to json -r | print -e
+    { level: "info", msg: "done", duration_ms: $duration_ms } | to json -r | print -e
 
-    # Return wrapped response
-    {
-        success: true
-        data: $output
-        trace_id: $trace_id
-        duration_ms: $duration_ms
-    } | to json
+    { success: true, data: $output, trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
 }
