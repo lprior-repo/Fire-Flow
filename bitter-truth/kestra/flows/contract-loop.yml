@@ -56,27 +56,37 @@ tasks:
         type: io.kestra.plugin.scripts.shell.Commands
         description: AI compiles intent -> Nushell
         runner: PROCESS
+        env:
+          XDG_DATA_HOME: "/tmp"
+          XDG_CONFIG_HOME: "/tmp"
+          HOME: "/tmp"
         commands:
           - |
             nu -c '
-            let contract_content = (open "{{ inputs.contract }}")
-            let prompt = $"TASK: {{ inputs.task }}
+            let contract_content = (open "{{ inputs.contract }}" | to yaml)
+            let task_desc = "{{ inputs.task }}"
+            let feedback = "{{ vars.feedback }}"
+            let attempt = "{{ taskrun.value }}/{{ inputs.max_attempts }}"
 
-            CONTRACT (Law 2 - this is GOD):
-            ($contract_content)
-
-            PREVIOUS FEEDBACK:
-            {{ vars.feedback }}
-
-            ATTEMPT: {{ taskrun.value }}/{{ inputs.max_attempts }}
-
-            Generate a Nushell script that:
-            1. Reads JSON from stdin
-            2. Produces output matching the contract EXACTLY
-            3. Logs to stderr as JSON
-            4. Returns exit 0 on success, exit 1 on failure
-
-            Output ONLY the Nushell script, no explanation."
+            # Build prompt without string interpolation issues
+            let prompt = [
+              $"TASK: ($task_desc)"
+              ""
+              "CONTRACT - this is the schema to match:"
+              $contract_content
+              ""
+              $"PREVIOUS FEEDBACK: ($feedback)"
+              ""
+              $"ATTEMPT: ($attempt)"
+              ""
+              "Generate a Nushell script that:"
+              "1. Reads JSON from stdin"
+              "2. Produces output matching the contract EXACTLY"
+              "3. Logs to stderr as JSON"
+              "4. Returns exit 0 on success, exit 1 on failure"
+              ""
+              "Output ONLY the Nushell script, no explanation."
+            ] | str join "\n"
 
             $prompt | opencode -p $in | save -f /tmp/tool.nu
             print "Generated tool saved to /tmp/tool.nu"
@@ -90,9 +100,10 @@ tasks:
         commands:
           - |
             nu -c '
+            let input_json_str = "{{ inputs.input_json }}"
             let run_input = {
               tool_path: "/tmp/tool.nu"
-              tool_input: ({{ inputs.input_json }} | from json)
+              tool_input: ($input_json_str | from json)
               output_path: "/tmp/output.json"
               logs_path: "/tmp/logs.json"
               context: { trace_id: "{{ execution.id }}" }
@@ -138,18 +149,24 @@ tasks:
             nu -c '
             let output = (open /tmp/output.json | to json)
             let logs = (open /tmp/logs.json)
-            let feedback = $"ATTEMPT {{ taskrun.value }} FAILED.
+            let attempt = "{{ taskrun.value }}"
+            let contract_errors = "{{ outputs.gate_contract.stdErr }}"
 
-            CONTRACT ERRORS:
-            {{ outputs.gate_contract.stdErr }}
-
-            OUTPUT PRODUCED:
-            ($output)
-
-            LOGS:
-            ($logs)
-
-            FIX THE NUSHELL SCRIPT TO SATISFY THE CONTRACT."
+            # Build feedback without template/interpolation conflicts
+            let feedback = [
+              $"ATTEMPT ($attempt) FAILED."
+              ""
+              "CONTRACT ERRORS:"
+              $contract_errors
+              ""
+              "OUTPUT PRODUCED:"
+              $output
+              ""
+              "LOGS:"
+              ($logs | to text)
+              ""
+              "FIX THE NUSHELL SCRIPT TO SATISFY THE CONTRACT."
+            ] | str join "\n"
 
             # Store feedback for next iteration
             $feedback | save -f /tmp/feedback.txt
@@ -186,9 +203,6 @@ outputs:
   - id: success
     type: BOOLEAN
     value: "{{ outputs.check_pass is defined }}"
-  - id: attempts
-    type: INT
-    value: "{{ taskrun.value }}"
   - id: output_file
     type: STRING
     value: "/tmp/output.json"
