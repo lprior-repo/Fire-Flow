@@ -59,13 +59,17 @@ tasks:
         taskRunner:
           type: io.kestra.plugin.core.runner.Process
         timeout: PT10M
+        # Note: Keep HOME for config, redirect XDG dirs for writable log/cache
         env:
-          XDG_DATA_HOME: "/tmp"
-          XDG_CONFIG_HOME: "/tmp"
-          HOME: "/tmp"
+          XDG_DATA_HOME: /tmp/opencode-data
+          XDG_CACHE_HOME: /tmp/opencode-cache
+          XDG_STATE_HOME: /tmp/opencode-state
         commands:
           - |
             nu -c '
+            # Create archive dir
+            mkdir /tmp/generated-tools
+            let archive_path = "/tmp/generated-tools/tool-{{ execution.id }}-{{ taskrun.value }}.nu"
             let gen_input = {
               contract_path: "{{ inputs.contract }}"
               task: "{{ inputs.task }}"
@@ -78,6 +82,8 @@ tasks:
               }
             }
             $gen_input | to json | nu {{ inputs.tools_dir }}/generate.nu
+            # Archive the generated tool
+            cp /tmp/tool.nu $archive_path
             '
 
       # 2. EXECUTE THE GENERATED TOOL
@@ -88,11 +94,15 @@ tasks:
           type: io.kestra.plugin.core.runner.Process
         commands:
           - |
+            # Write input JSON to temp file to avoid quoting issues
+            cat > /tmp/input.json << 'INPUTEOF'
+            {{ inputs.input_json }}
+            INPUTEOF
             nu -c '
-            let input_json_str = "{{ inputs.input_json }}"
+            let tool_input = (open /tmp/input.json)
             let run_input = {
               tool_path: "/tmp/tool.nu"
-              tool_input: ($input_json_str | from json)
+              tool_input: $tool_input
               output_path: "/tmp/output.json"
               logs_path: "/tmp/logs.json"
               context: { trace_id: "{{ execution.id }}" }
@@ -106,6 +116,10 @@ tasks:
         description: DataContract is the law - validate via validate.nu
         taskRunner:
           type: io.kestra.plugin.core.runner.Process
+        env:
+          PATH: "/home/lewis/.local/bin:/usr/local/bin:/usr/bin:/bin"
+          HOME: /tmp
+          SODA_SEND_ANONYMOUS_USAGE_STATS: "false"
         commands:
           - |
             nu -c '
@@ -117,10 +131,10 @@ tasks:
             $validate_input | to json | nu {{ inputs.tools_dir }}/validate.nu
             '
 
-      # 4. CHECK: Did we pass?
+      # 4. CHECK: Did we pass? (read captured output file)
       - id: check_pass
         type: io.kestra.plugin.core.flow.If
-        condition: "{{ outputs.gate_contract.exitCode == 0 }}"
+        condition: "{{ read(outputs.gate_contract.outputFiles['validate-result.txt']) == 'PASS' }}"
         then:
           - id: success
             type: io.kestra.plugin.core.log.Log

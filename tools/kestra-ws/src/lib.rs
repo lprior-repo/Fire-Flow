@@ -8,7 +8,6 @@
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 // ============================================================================
 // COMMODITY LAYER: Standard patterns that should be reused
@@ -139,6 +138,274 @@ impl LogEntry {
     pub fn format_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
     }
+
+    /// Format log entry as XML for AI consumption
+    /// Includes nested JSON parsing and semantic classification
+    pub fn format_xml(&self) -> String {
+        let level = self.level.as_deref().unwrap_or("INFO");
+        let severity = classify_severity(level);
+        let msg = self.message.as_deref().unwrap_or("");
+
+        let mut xml = format!("<log severity=\"{}\">\n", severity);
+
+        // Metadata section
+        xml.push_str("  <meta>\n");
+        if let Some(ref id) = self.execution_id {
+            xml.push_str(&format!("    <execution_id>{}</execution_id>\n", escape_xml(id)));
+        }
+        if let Some(ref ns) = self.namespace {
+            xml.push_str(&format!("    <namespace>{}</namespace>\n", escape_xml(ns)));
+        }
+        if let Some(ref flow) = self.flow_id {
+            xml.push_str(&format!("    <flow_id>{}</flow_id>\n", escape_xml(flow)));
+        }
+        if let Some(ref task) = self.task_id {
+            xml.push_str(&format!("    <task_id>{}</task_id>\n", escape_xml(task)));
+        }
+        if let Some(ref level) = self.level {
+            xml.push_str(&format!("    <level>{}</level>\n", escape_xml(level)));
+        }
+        if let Some(ref ts) = self.timestamp {
+            xml.push_str(&format!("    <timestamp>{}</timestamp>\n", escape_xml(ts)));
+        }
+        xml.push_str("  </meta>\n");
+
+        // Try to parse message as JSON for structured data
+        if let Some(parsed) = try_parse_structured_message(msg) {
+            xml.push_str("  <structured_message>\n");
+            xml.push_str(&parsed);
+            xml.push_str("  </structured_message>\n");
+        }
+
+        // Always include raw message
+        xml.push_str(&format!("  <message><![CDATA[{}]]></message>\n", msg));
+
+        // Add action hints for errors
+        if severity == "error" || severity == "fatal" {
+            if let Some(hint) = extract_error_hint(msg) {
+                xml.push_str(&format!("  <action_hint>{}</action_hint>\n", escape_xml(&hint)));
+            }
+        }
+
+        xml.push_str("</log>");
+        xml
+    }
+}
+
+/// Classify log level into semantic severity
+fn classify_severity(level: &str) -> &'static str {
+    match level.to_uppercase().as_str() {
+        "TRACE" => "trace",
+        "DEBUG" => "debug",
+        "INFO" => "info",
+        "WARN" | "WARNING" => "warning",
+        "ERROR" => "error",
+        "FATAL" | "CRITICAL" => "fatal",
+        _ => "info",
+    }
+}
+
+/// Try to parse message as structured JSON and convert to XML
+fn try_parse_structured_message(msg: &str) -> Option<String> {
+    // Try parsing as JSON
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(msg) {
+        return Some(json_to_xml(&json, 2));
+    }
+
+    // Check if message contains embedded JSON (common in logs)
+    if let Some(start) = msg.find('{') {
+        if let Some(end) = msg.rfind('}') {
+            if end > start {
+                let json_part = &msg[start..=end];
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_part) {
+                    let prefix = msg[..start].trim();
+                    let mut result = String::new();
+                    if !prefix.is_empty() {
+                        result.push_str(&format!("    <prefix>{}</prefix>\n", escape_xml(prefix)));
+                    }
+                    result.push_str(&json_to_xml(&json, 2));
+                    return Some(result);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Convert JSON value to XML string
+fn json_to_xml(value: &serde_json::Value, indent: usize) -> String {
+    let spaces = "  ".repeat(indent);
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut xml = String::new();
+            for (key, val) in map {
+                let safe_key = sanitize_xml_tag(key);
+                match val {
+                    serde_json::Value::Object(_) | serde_json::Value::Array(_) => {
+                        xml.push_str(&format!("{}<{}>\n", spaces, safe_key));
+                        xml.push_str(&json_to_xml(val, indent + 1));
+                        xml.push_str(&format!("{}</{}>\n", spaces, safe_key));
+                    }
+                    _ => {
+                        let text = json_value_to_string(val);
+                        xml.push_str(&format!("{}<{}>{}</{}>\n", spaces, safe_key, escape_xml(&text), safe_key));
+                    }
+                }
+            }
+            xml
+        }
+        serde_json::Value::Array(arr) => {
+            let mut xml = String::new();
+            for (i, val) in arr.iter().enumerate() {
+                xml.push_str(&format!("{}<item index=\"{}\">\n", spaces, i));
+                xml.push_str(&json_to_xml(val, indent + 1));
+                xml.push_str(&format!("{}</item>\n", spaces));
+            }
+            xml
+        }
+        _ => {
+            let text = json_value_to_string(value);
+            format!("{}<value>{}</value>\n", spaces, escape_xml(&text))
+        }
+    }
+}
+
+/// Convert JSON value to string representation
+fn json_value_to_string(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Null => "null".to_string(),
+        _ => value.to_string(),
+    }
+}
+
+/// Sanitize a string to be a valid XML tag name
+fn sanitize_xml_tag(s: &str) -> String {
+    let mut result = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if i == 0 {
+            if c.is_ascii_alphabetic() || c == '_' {
+                result.push(c);
+            } else {
+                result.push('_');
+                if c.is_ascii_alphanumeric() {
+                    result.push(c);
+                }
+            }
+        } else if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
+            result.push(c);
+        } else {
+            result.push('_');
+        }
+    }
+    if result.is_empty() {
+        result = "field".to_string();
+    }
+    result
+}
+
+/// Extract actionable hints from error messages
+fn extract_error_hint(msg: &str) -> Option<String> {
+    let msg_lower = msg.to_lowercase();
+
+    // Exit code analysis
+    if msg_lower.contains("exit code 137") || msg_lower.contains("exit 137") {
+        return Some("Process killed (OOM or timeout). Check memory limits or increase timeout.".into());
+    }
+    if msg_lower.contains("exit code 1") || msg_lower.contains("exit 1") {
+        return Some("Command failed. Check the command output for specific error details.".into());
+    }
+
+    // Common error patterns
+    if msg_lower.contains("connection refused") {
+        return Some("Service unreachable. Check if the target service is running.".into());
+    }
+    if msg_lower.contains("permission denied") {
+        return Some("Permission issue. Check file/resource permissions.".into());
+    }
+    if msg_lower.contains("not found") || msg_lower.contains("no such file") {
+        return Some("Resource not found. Verify paths and dependencies exist.".into());
+    }
+    if msg_lower.contains("timeout") {
+        return Some("Operation timed out. Consider increasing timeout or optimizing the operation.".into());
+    }
+    if msg_lower.contains("opencode failed") {
+        return Some("AI code generation failed. Check opencode logs and API connectivity.".into());
+    }
+
+    None
+}
+
+/// Escape XML special characters
+pub fn escape_xml(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+/// XML stream wrapper for complete output
+pub struct XmlStream {
+    execution_id: String,
+    namespace: String,
+    flow_id: String,
+    start_time: String,
+}
+
+impl XmlStream {
+    pub fn new(execution_id: &str, namespace: &str, flow_id: &str) -> Self {
+        Self {
+            execution_id: execution_id.to_string(),
+            namespace: namespace.to_string(),
+            flow_id: flow_id.to_string(),
+            start_time: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
+    /// Output stream header
+    pub fn header(&self) -> String {
+        format!(
+            r#"<kestra_stream version="1.0">
+  <stream_meta>
+    <execution_id>{}</execution_id>
+    <namespace>{}</namespace>
+    <flow_id>{}</flow_id>
+    <stream_started>{}</stream_started>
+    <schema>kestra-ws-xml-v1</schema>
+  </stream_meta>
+  <logs>
+"#,
+            escape_xml(&self.execution_id),
+            escape_xml(&self.namespace),
+            escape_xml(&self.flow_id),
+            escape_xml(&self.start_time)
+        )
+    }
+
+    /// Output stream footer with summary
+    pub fn footer(&self, final_state: &str, task_summary: &str, error_count: usize, warning_count: usize) -> String {
+        format!(
+            r#"  </logs>
+  <summary>
+    <final_state>{}</final_state>
+    <task_summary>{}</task_summary>
+    <error_count>{}</error_count>
+    <warning_count>{}</warning_count>
+    <stream_ended>{}</stream_ended>
+  </summary>
+</kestra_stream>
+"#,
+            escape_xml(final_state),
+            escape_xml(task_summary),
+            error_count,
+            warning_count,
+            chrono::Utc::now().to_rfc3339()
+        )
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -190,6 +457,31 @@ impl Execution {
                     .join(", ")
             })
             .unwrap_or_default()
+    }
+
+    /// Format execution status as XML for AI consumption
+    pub fn format_xml(&self) -> String {
+        let mut xml = String::from("<execution_status>\n");
+
+        xml.push_str(&format!("  <id>{}</id>\n", escape_xml(&self.id)));
+        xml.push_str(&format!("  <namespace>{}</namespace>\n", escape_xml(&self.namespace)));
+        xml.push_str(&format!("  <flow_id>{}</flow_id>\n", escape_xml(&self.flow_id)));
+        xml.push_str(&format!("  <state>{}</state>\n", escape_xml(&self.state.current)));
+
+        if let Some(ref tasks) = self.task_run_list {
+            xml.push_str("  <tasks>\n");
+            for task in tasks {
+                xml.push_str(&format!(
+                    "    <task id=\"{}\" state=\"{}\"/>\n",
+                    escape_xml(&task.task_id),
+                    escape_xml(&task.state.current)
+                ));
+            }
+            xml.push_str("  </tasks>\n");
+        }
+
+        xml.push_str("</execution_status>");
+        xml
     }
 }
 
@@ -401,5 +693,91 @@ mod tests {
         let exec: Execution = serde_json::from_str(json).unwrap();
         assert_eq!(exec.id, "exec-abc");
         assert!(!exec.state.is_terminal());
+    }
+
+    #[test]
+    fn test_log_entry_format_xml_basic() {
+        let log = LogEntry {
+            execution_id: Some("exec-123".into()),
+            namespace: Some("bitter".into()),
+            flow_id: Some("contract-loop".into()),
+            task_id: Some("generate".into()),
+            message: Some("Test message".into()),
+            level: Some("INFO".into()),
+            timestamp: Some("2024-12-25T00:00:00Z".into()),
+        };
+
+        let xml = log.format_xml();
+        assert!(xml.contains("<log severity=\"info\">"));
+        assert!(xml.contains("<execution_id>exec-123</execution_id>"));
+        assert!(xml.contains("<task_id>generate</task_id>"));
+        assert!(xml.contains("<![CDATA[Test message]]>"));
+    }
+
+    #[test]
+    fn test_log_entry_format_xml_with_json_message() {
+        let log = LogEntry {
+            execution_id: Some("exec-123".into()),
+            namespace: None,
+            flow_id: None,
+            task_id: Some("generate".into()),
+            message: Some(r#"{"level":"info","msg":"generating tool","trace_id":"abc123"}"#.into()),
+            level: Some("ERROR".into()),
+            timestamp: None,
+        };
+
+        let xml = log.format_xml();
+        assert!(xml.contains("<log severity=\"error\">"));
+        assert!(xml.contains("<structured_message>"));
+        assert!(xml.contains("<level>info</level>"));
+        assert!(xml.contains("<msg>generating tool</msg>"));
+        assert!(xml.contains("<trace_id>abc123</trace_id>"));
+    }
+
+    #[test]
+    fn test_log_entry_format_xml_with_action_hint() {
+        let log = LogEntry {
+            execution_id: Some("exec-123".into()),
+            namespace: None,
+            flow_id: None,
+            task_id: Some("generate".into()),
+            message: Some("opencode failed with exit 137".into()),
+            level: Some("ERROR".into()),
+            timestamp: None,
+        };
+
+        let xml = log.format_xml();
+        assert!(xml.contains("<action_hint>"));
+        assert!(xml.contains("OOM or timeout"));
+    }
+
+    #[test]
+    fn test_execution_format_xml() {
+        let exec = Execution {
+            id: "exec-abc".into(),
+            namespace: "bitter".into(),
+            flow_id: "contract-loop".into(),
+            state: ExecutionState { current: "FAILED".into() },
+            task_run_list: Some(vec![
+                TaskRun {
+                    id: "run-1".into(),
+                    task_id: "generate".into(),
+                    state: ExecutionState { current: "FAILED".into() },
+                },
+            ]),
+        };
+
+        let xml = exec.format_xml();
+        assert!(xml.contains("<execution_status>"));
+        assert!(xml.contains("<id>exec-abc</id>"));
+        assert!(xml.contains("<state>FAILED</state>"));
+        assert!(xml.contains("<task id=\"generate\" state=\"FAILED\"/>"));
+    }
+
+    #[test]
+    fn test_escape_xml() {
+        assert_eq!(escape_xml("<test>"), "&lt;test&gt;");
+        assert_eq!(escape_xml("a & b"), "a &amp; b");
+        assert_eq!(escape_xml("\"quoted\""), "&quot;quoted&quot;");
     }
 }

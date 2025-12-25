@@ -18,11 +18,6 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use clap::{Parser, Subcommand};
 use colored::*;
-use futures_util::{SinkExt, StreamExt};
-use serde::{Deserialize, Serialize};
-use std::process;
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use url::Url;
 
 /// Kestra WebSocket Log Streamer - AI-friendly log monitoring
 #[derive(Parser)]
@@ -93,43 +88,8 @@ enum Commands {
     },
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct LogEntry {
-    #[serde(rename = "executionId")]
-    execution_id: Option<String>,
-    namespace: Option<String>,
-    #[serde(rename = "flowId")]
-    flow_id: Option<String>,
-    #[serde(rename = "taskId")]
-    task_id: Option<String>,
-    message: Option<String>,
-    level: Option<String>,
-    timestamp: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Execution {
-    id: String,
-    namespace: String,
-    #[serde(rename = "flowId")]
-    flow_id: String,
-    state: ExecutionState,
-    #[serde(rename = "taskRunList")]
-    task_run_list: Option<Vec<TaskRun>>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ExecutionState {
-    current: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct TaskRun {
-    id: String,
-    #[serde(rename = "taskId")]
-    task_id: String,
-    state: ExecutionState,
-}
+// Use types from lib for XML formatting support
+use kestra_ws::{LogEntry, Execution};
 
 fn get_credentials() -> Result<(String, String), Box<dyn std::error::Error>> {
     let user = std::process::Command::new("pass")
@@ -352,6 +312,25 @@ async fn poll_execution(
     let logs_url = format!("http://{}/api/v1/logs/{}", base_url, execution_id);
 
     let mut last_log_count = 0;
+    let mut error_count = 0usize;
+    let mut warning_count = 0usize;
+    let mut xml_stream: Option<kestra_ws::XmlStream> = None;
+
+    // For XML format, we need to get initial execution info for the header
+    if format == "xml" {
+        let exec_response = client
+            .get(&exec_url)
+            .header("Authorization", &auth)
+            .send()
+            .await?;
+
+        if exec_response.status().is_success() {
+            let execution: Execution = exec_response.json().await?;
+            let stream = kestra_ws::XmlStream::new(&execution.id, &execution.namespace, &execution.flow_id);
+            print!("{}", stream.header());
+            xml_stream = Some(stream);
+        }
+    }
 
     loop {
         // Get execution status
@@ -385,12 +364,20 @@ async fn poll_execution(
 
             // Only output new logs
             for log in logs.iter().skip(last_log_count) {
+                // Track error/warning counts for summary
+                if let Some(ref level) = log.level {
+                    match level.to_uppercase().as_str() {
+                        "ERROR" | "FATAL" | "CRITICAL" => error_count += 1,
+                        "WARN" | "WARNING" => warning_count += 1,
+                        _ => {}
+                    }
+                }
                 output_log(log, format);
             }
             last_log_count = logs.len();
         }
 
-        // Output execution summary
+        // Output execution summary (skip for XML - will be in footer)
         if format == "json" {
             let summary = serde_json::json!({
                 "type": "execution_status",
@@ -404,7 +391,7 @@ async fn poll_execution(
                 }).collect::<Vec<_>>())
             });
             println!("{}", serde_json::to_string(&summary)?);
-        } else {
+        } else if format != "xml" {
             let state_color = match execution.state.current.as_str() {
                 "SUCCESS" => "green",
                 "FAILED" | "KILLED" => "red",
@@ -430,6 +417,19 @@ async fn poll_execution(
         // Exit if execution completed
         match execution.state.current.as_str() {
             "SUCCESS" | "FAILED" | "KILLED" | "WARNING" => {
+                // For XML, output the footer with summary
+                if let Some(ref stream) = xml_stream {
+                    let task_summary = execution
+                        .task_run_list
+                        .as_ref()
+                        .map(|t| t
+                            .iter()
+                            .map(|tr| format!("{}:{}", tr.task_id, tr.state.current))
+                            .collect::<Vec<_>>()
+                            .join(", "))
+                        .unwrap_or_default();
+                    print!("{}", stream.footer(&execution.state.current, &task_summary, error_count, warning_count));
+                }
                 eprintln!("{}: Execution completed with state {}", "DONE".green(), execution.state.current);
                 break;
             }
@@ -448,6 +448,9 @@ fn output_log(log: &LogEntry, format: &str) {
             if let Ok(json) = serde_json::to_string(log) {
                 println!("{}", json);
             }
+        }
+        "xml" => {
+            println!("{}", log.format_xml());
         }
         "raw" => {
             if let Some(msg) = &log.message {
@@ -483,6 +486,29 @@ fn output_execution(exec: &serde_json::Value, format: &str) {
             if let Ok(json) = serde_json::to_string(exec) {
                 println!("{}", json);
             }
+        }
+        "xml" => {
+            let id = exec.get("id").and_then(|i| i.as_str()).unwrap_or("-");
+            let ns = exec.get("namespace").and_then(|n| n.as_str()).unwrap_or("-");
+            let flow = exec.get("flowId").and_then(|f| f.as_str()).unwrap_or("-");
+            let state = exec
+                .get("state")
+                .and_then(|s| s.get("current"))
+                .and_then(|c| c.as_str())
+                .unwrap_or("-");
+
+            println!(
+                r#"<new_execution>
+  <id>{}</id>
+  <namespace>{}</namespace>
+  <flow_id>{}</flow_id>
+  <state>{}</state>
+</new_execution>"#,
+                kestra_ws::escape_xml(id),
+                kestra_ws::escape_xml(ns),
+                kestra_ws::escape_xml(flow),
+                kestra_ws::escape_xml(state)
+            );
         }
         _ => {
             let id = exec.get("id").and_then(|i| i.as_str()).unwrap_or("-");

@@ -77,10 +77,15 @@ def main [] {
         was_dry_run: false
     }
 
+    # Always exit 0 so the flow can continue to self-heal on failures
+    # The success field indicates whether the tool actually worked
     if $result.exit_code == 0 {
         { success: true, data: $output, trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
     } else {
-        { success: false, data: $output, error: "tool exited with non-zero code", trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
-        exit 1
+        # Capture tool's stderr as the error message for debugging
+        let tool_error = if ($result.stderr | str length) > 0 { $result.stderr } else { "tool exited with non-zero code" }
+        { level: "warn", msg: "tool failed", exit_code: $result.exit_code, error: $tool_error } | to json -r | print -e
+        { success: false, data: $output, error: $tool_error, trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
+        # DON'T exit 1 - let flow continue to self-heal
     }
 }

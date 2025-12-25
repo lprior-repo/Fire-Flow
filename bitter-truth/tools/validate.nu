@@ -32,18 +32,10 @@ def main [] {
         exit 1
     }
 
-    if not ($contract_path | path exists) {
-        let dur = (date now) - $start | into int | $in / 1000000
-        { level: "error", msg: $"contract not found: ($contract_path)", trace_id: $trace_id } | to json -r | print -e
-        { success: false, error: $"contract not found: ($contract_path)", trace_id: $trace_id, duration_ms: $dur } | to json | print
-        exit 1
-    }
-
-    { level: "info", msg: "validating data", trace_id: $trace_id, contract: $contract_path, server: $server, dry_run: $dry_run } | to json -r | print -e
-
+    # Check dry_run BEFORE checking file existence (dry_run skips all real operations)
     if $dry_run {
         let dur = (date now) - $start | into int | $in / 1000000
-        { level: "info", msg: "dry-run mode - skipping validation" } | to json -r | print -e
+        { level: "info", msg: "dry-run mode - skipping validation", trace_id: $trace_id } | to json -r | print -e
         let output = {
             valid: true
             errors: []
@@ -52,6 +44,15 @@ def main [] {
         { success: true, data: $output, trace_id: $trace_id, duration_ms: $dur } | to json | print
         exit 0
     }
+
+    if not ($contract_path | path exists) {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { level: "error", msg: $"contract not found: ($contract_path)", trace_id: $trace_id } | to json -r | print -e
+        { success: false, error: $"contract not found: ($contract_path)", trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 1
+    }
+
+    { level: "info", msg: "validating data", trace_id: $trace_id, contract: $contract_path, server: $server, dry_run: $dry_run } | to json -r | print -e
 
     # Run datacontract test against the server
     let result = do {
@@ -79,10 +80,17 @@ def main [] {
         was_dry_run: false
     }
 
+    # Output Kestra format ONLY when running in Kestra (detected by KESTRA_EXECUTION_ID)
+    # Format: ::{"outputs":{"key":"value"}}::
+    if ($env.KESTRA_EXECUTION_ID? | default "" | str length) > 0 {
+        let kestra_output = { outputs: { valid: $is_valid } } | to json -r
+        print $"::($kestra_output)::"
+    }
+
     if $is_valid {
         { success: true, data: $output, trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
     } else {
         { success: false, data: $output, error: "contract validation failed", trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
-        exit 1
+        # DON'T exit 1 - let flow continue to self-heal
     }
 }
