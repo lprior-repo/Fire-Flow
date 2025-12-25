@@ -11,9 +11,17 @@
 def main [] {
     let start = date now
 
-    # Read JSON from stdin
+    # Read JSON from stdin with error handling
     let raw = open --raw /dev/stdin
-    let input = $raw | from json
+    let input = try {
+        $raw | from json
+    } catch {
+        # JSON parsing failed - return proper error response
+        let dur = (date now) - $start | into int | $in / 1000000
+        { level: "error", msg: "invalid JSON input" } | to json -r | print -e
+        { success: false, error: "Invalid JSON input", trace_id: "", duration_ms: $dur } | to json | print
+        exit 1
+    }
 
     # Extract context
     let ctx = $input.context? | default {}

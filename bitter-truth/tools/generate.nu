@@ -12,9 +12,17 @@
 def main [] {
     let start = date now
 
-    # Read JSON from stdin
+    # Read JSON from stdin with error handling
     let raw = open --raw /dev/stdin
-    let input = $raw | from json
+    let input = try {
+        $raw | from json
+    } catch {
+        # JSON parsing failed - return proper error response
+        let dur = (date now) - $start | into int | $in / 1000000
+        { level: "error", msg: "invalid JSON input" } | to json -r | print -e
+        { success: false, error: "Invalid JSON input", trace_id: "", duration_ms: $dur } | to json | print
+        exit 1
+    }
 
     # Extract context
     let ctx = $input.context? | default {}
@@ -159,19 +167,40 @@ OUTPUT ONLY THE CODE INSIDE A ```nushell CODE BLOCK:"
     }
 
     # Use llm-cleaner to extract nushell code from potentially chatty output
-    let llm_cleaner = "/home/lewis/src/Fire-Flow/tools/llm-cleaner/target/release/llm-cleaner"
-    { level: "debug", msg: "cleaning LLM output with llm-cleaner" } | to json -r | print -e
+    # Look for llm-cleaner in multiple locations
+    let llm_cleaner_paths = [
+        "/home/lewis/src/Fire-Flow/tools/llm-cleaner/target/release/llm-cleaner"
+        ($env.PWD | path join "tools/llm-cleaner/target/release/llm-cleaner")
+        ($env.HOME | path join "src/Fire-Flow/tools/llm-cleaner/target/release/llm-cleaner")
+        "llm-cleaner"  # Check if in PATH
+    ]
 
-    let clean_result = $raw_output | do { ^$llm_cleaner --lang nushell --debug } | complete
+    let llm_cleaner = (
+        $llm_cleaner_paths
+        | each { if (($in | path exists)) { $in } else { null } }
+        | compact
+        | first
+        | default null
+    )
 
-    if $clean_result.exit_code != 0 {
-        { level: "warn", msg: "llm-cleaner failed - trying raw output", error: $clean_result.stderr } | to json -r | print -e
-        # Fallback: use raw output if cleaner fails
+    if ($llm_cleaner | is-empty) {
+        { level: "warn", msg: "llm-cleaner not found - will use raw output", tried_paths: $llm_cleaner_paths } | to json -r | print -e
+        # Fallback to raw output without cleaning
         $raw_output | save -f $output_path
     } else {
-        let generated_code = $clean_result.stdout
-        { level: "info", msg: "llm-cleaner extracted code", code_length: ($generated_code | str length), cleaner_stderr: $clean_result.stderr } | to json -r | print -e
-        $generated_code | save -f $output_path
+        { level: "debug", msg: "cleaning LLM output with llm-cleaner", cleaner_path: $llm_cleaner } | to json -r | print -e
+
+        let clean_result = $raw_output | do { ^$llm_cleaner --lang nushell --debug } | complete
+
+        if $clean_result.exit_code != 0 {
+            { level: "warn", msg: "llm-cleaner failed - trying raw output", error: $clean_result.stderr } | to json -r | print -e
+            # Fallback: use raw output if cleaner fails
+            $raw_output | save -f $output_path
+        } else {
+            let generated_code = $clean_result.stdout
+            { level: "info", msg: "llm-cleaner extracted code", code_length: ($generated_code | str length), cleaner_stderr: $clean_result.stderr } | to json -r | print -e
+            $generated_code | save -f $output_path
+        }
     }
 
     { level: "info", msg: "generation complete", output_path: $output_path, duration_ms: $duration_ms } | to json -r | print -e
