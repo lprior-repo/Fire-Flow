@@ -1,0 +1,71 @@
+# Modular Component: Collect Feedback for Self-Healing
+#
+# INPUT: output_file, logs_file, validation_errors, attempt_num
+# OUTPUT: feedback (text for AI to fix itself)
+#
+# Pure function: failed attempt -> AI-readable feedback
+# Transforms validation errors + output + logs into structured feedback
+
+id: collect-feedback
+namespace: bitter
+description: Collect feedback from failed attempt for AI self-healing
+
+inputs:
+  - id: output_file
+    type: STRING
+    defaults: "/tmp/output.json"
+    description: Tool output file
+
+  - id: logs_file
+    type: STRING
+    defaults: "/tmp/logs.json"
+    description: Tool logs file
+
+  - id: validation_errors
+    type: STRING
+    defaults: ""
+    description: Contract validation errors from validate step
+
+  - id: attempt_number
+    type: STRING
+    defaults: "1"
+    description: Current attempt number (e.g., "2/5")
+
+tasks:
+  - id: collect
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Build feedback message for AI retry
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - |
+        nu -c '
+        let output = (try { open "{{ inputs.output_file }}" } catch { {} })
+        let logs = (try { open "{{ inputs.logs_file }}" } catch { {} })
+        let errors = "{{ inputs.validation_errors }}"
+
+        # Build structured feedback
+        let feedback = [
+          $"ATTEMPT {{ inputs.attempt_number }} FAILED."
+          ""
+          "CONTRACT ERRORS:"
+          $errors
+          ""
+          "OUTPUT PRODUCED:"
+          ($output | to text)
+          ""
+          "LOGS:"
+          ($logs | to text)
+          ""
+          "FIX THE NUSHELL SCRIPT TO SATISFY THE CONTRACT."
+        ] | str join "\n"
+
+        # Save and output feedback
+        $feedback | save -f /tmp/feedback.txt
+        print $feedback
+        '
+
+outputs:
+  - id: feedback
+    type: STRING
+    value: "{{ read('/tmp/feedback.txt') }}"

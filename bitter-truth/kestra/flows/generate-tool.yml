@@ -1,0 +1,84 @@
+# Modular Component: AI Generates Nushell Tool from Contract
+#
+# INPUT: contract_path, task, feedback, attempt, tools_dir
+# OUTPUT: tool_path (/tmp/tool.nu)
+# ERRORS: Exit with error log
+#
+# Pure function: contract + task + feedback -> nushell tool or error
+# No side effects beyond file creation in /tmp
+
+id: generate-tool
+namespace: bitter
+description: AI generates Nushell tool from DataContract + task description
+
+inputs:
+  - id: contract_path
+    type: STRING
+    description: Path to DataContract YAML file
+
+  - id: task
+    type: STRING
+    description: Natural language description of what to generate
+
+  - id: feedback
+    type: STRING
+    defaults: "Initial generation"
+    description: Feedback from previous failed attempt (for self-healing)
+
+  - id: attempt
+    type: STRING
+    defaults: "1/5"
+    description: Current attempt number (e.g., "2/5")
+
+  - id: tools_dir
+    type: STRING
+    defaults: "./bitter-truth/tools"
+    description: Directory containing bitter-truth tools
+
+  - id: output_path
+    type: STRING
+    defaults: "/tmp/tool.nu"
+    description: Where to save generated tool
+
+  - id: timeout_seconds
+    type: INT
+    defaults: 300
+    description: Timeout for AI generation
+
+  - id: trace_id
+    type: STRING
+    defaults: ""
+    description: Trace ID for logging
+
+tasks:
+  - id: generate
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: AI generates Nushell via opencode
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    timeout: PT10M
+    env:
+      XDG_DATA_HOME: /tmp/opencode-data
+      XDG_CACHE_HOME: /tmp/opencode-cache
+      XDG_STATE_HOME: /tmp/opencode-state
+    commands:
+      - |
+        nu -c '
+        let gen_input = {
+          contract_path: "{{ inputs.contract_path }}"
+          task: "{{ inputs.task }}"
+          feedback: "{{ inputs.feedback }}"
+          attempt: "{{ inputs.attempt }}"
+          output_path: "{{ inputs.output_path }}"
+          context: {
+            trace_id: "{{ inputs.trace_id }}"
+            timeout_seconds: {{ inputs.timeout_seconds }}
+          }
+        }
+        $gen_input | to json | nu {{ inputs.tools_dir }}/generate.nu
+        '
+
+outputs:
+  - id: tool_path
+    type: STRING
+    value: "{{ inputs.output_path }}"

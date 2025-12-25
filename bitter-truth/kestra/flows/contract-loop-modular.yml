@@ -1,0 +1,156 @@
+# bitter-truth: Contract-Driven Loop with Self-Healing (MODULAR)
+#
+# Uses composable workflow components:
+# - generate-tool: AI generates Nushell from contract
+# - execute-tool: Run the generated tool
+# - validate-tool: Contract validation via DataContract
+# - collect-feedback: Build feedback for self-healing loop
+#
+# THE 4 LAWS:
+# 1. No-Human Zone: AI writes all Nushell, humans write contracts
+# 2. Contract is Law: Validation is draconian, self-heal on failure
+# 3. We Set the Standard: Human defines target, AI hits it
+# 4. Orchestrator Runs Everything: Kestra owns execution
+#
+# PATTERN: Generate -> Execute -> Validate -> (Pass=Exit | Fail=Feedback->Retry)
+
+id: contract-loop-modular
+namespace: bitter
+
+inputs:
+  - id: contract
+    type: STRING
+    description: Path to DataContract (source of truth)
+
+  - id: task
+    type: STRING
+    description: Natural language intent (what AI should generate)
+
+  - id: input_json
+    type: STRING
+    defaults: "{}"
+    description: JSON input for the generated tool
+
+  - id: max_attempts
+    type: INT
+    defaults: 5
+    description: Attempts before escalating to human
+
+  - id: tools_dir
+    type: STRING
+    defaults: "./bitter-truth/tools"
+    description: Directory containing bitter-truth tools
+
+variables:
+  feedback: "Initial generation"
+  trace_id: "{{ execution.id }}"
+
+tasks:
+  # LOOP: Generate -> Execute -> Validate -> Self-Heal or Escalate
+  - id: attempt_loop
+    type: io.kestra.plugin.core.flow.ForEach
+    values: "{{ range(1, inputs.max_attempts + 1) }}"
+    tasks:
+
+      # 1. GENERATE: AI generates Nushell from contract + feedback
+      - id: generate_step
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: bitter
+        flowId: generate-tool
+        inputs:
+          contract_path: "{{ inputs.contract }}"
+          task: "{{ inputs.task }}"
+          feedback: "{{ vars.feedback }}"
+          attempt: "{{ taskrun.value }}/{{ inputs.max_attempts }}"
+          output_path: "/tmp/tool.nu"
+          timeout_seconds: 300
+          trace_id: "{{ vars.trace_id }}"
+          tools_dir: "{{ inputs.tools_dir }}"
+
+      # 2. EXECUTE: Run the generated tool with input
+      - id: execute_step
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: bitter
+        flowId: execute-tool
+        inputs:
+          tool_path: "/tmp/tool.nu"
+          tool_input: "{{ inputs.input_json }}"
+          output_path: "/tmp/output.json"
+          logs_path: "/tmp/logs.json"
+          trace_id: "{{ vars.trace_id }}"
+          tools_dir: "{{ inputs.tools_dir }}"
+
+      # 3. VALIDATE: Contract validation (draconian)
+      - id: validate_step
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: bitter
+        flowId: validate-tool
+        inputs:
+          contract_path: "{{ inputs.contract }}"
+          output_path: "/tmp/output.json"
+          trace_id: "{{ vars.trace_id }}"
+          dry_run: false
+          tools_dir: "{{ inputs.tools_dir }}"
+
+      # 4. CHECK: Did we pass?
+      - id: check_pass
+        type: io.kestra.plugin.core.flow.If
+        condition: "{% set result = outputs.validate_step.validation_result | from_json %}{{ result.success and result.data.valid }}"
+        then:
+          - id: success_log
+            type: io.kestra.plugin.core.log.Log
+            message: "✓ Contract satisfied on attempt {{ taskrun.value }}"
+
+          - id: done
+            type: io.kestra.plugin.core.execution.Exit
+            state: SUCCESS
+
+      # 5. SELF-HEAL: Collect feedback for next attempt
+      - id: feedback_step
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: bitter
+        flowId: collect-feedback
+        inputs:
+          output_file: "/tmp/output.json"
+          logs_file: "/tmp/logs.json"
+          validation_errors: "{{ outputs.validate_step.validation_result }}"
+          attempt_number: "{{ taskrun.value }}/{{ inputs.max_attempts }}"
+
+      # 6. UPDATE: Store feedback for next iteration
+      - id: update_feedback
+        type: io.kestra.plugin.core.execution.SetVariables
+        variables:
+          feedback: "{{ outputs.feedback_step.feedback }}"
+
+  # 7. ESCALATE: Max attempts exceeded, page human
+  - id: escalate
+    type: io.kestra.plugin.core.log.Log
+    level: ERROR
+    message: |
+      ⚠️ ESCALATION REQUIRED (Law 2)
+
+      AI failed to satisfy contract after {{ inputs.max_attempts }} attempts.
+
+      DO NOT FIX THE NUSHELL SCRIPT.
+      FIX THE PROMPT OR THE CONTRACT.
+
+      Task: {{ inputs.task }}
+      Contract: {{ inputs.contract }}
+      Last feedback: {{ vars.feedback }}
+
+  - id: fail
+    type: io.kestra.plugin.core.execution.Exit
+    state: FAILED
+
+outputs:
+  - id: success
+    type: BOOLEAN
+    value: "{{ taskrun.outcomes contains('done') }}"
+
+  - id: output_file
+    type: STRING
+    value: "/tmp/output.json"
+
+  - id: tool_file
+    type: STRING
+    value: "/tmp/tool.nu"
