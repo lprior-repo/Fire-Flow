@@ -3,62 +3,54 @@
 AI-operated, contract-driven orchestration.
 
 ```
-Human Intent (English)
-        ↓
-   [OpenCode]     ← AI as Compiler
-        ↓
-Nushell Script    ← Machine Code for AI
-        ↓
-   [Kestra]       ← CPU (Scheduling)
-        ↓
-Structured Output
-        ↓
- [DataContract]   ← Memory Protection (Validation)
+Human Intent
+     ↓
+ [Contract]     ← Law 3: We set the standard
+     ↓
+ [Kestra]       ← Law 4: Orchestrator runs everything
+     ↓
+ [OpenCode]     ← Law 1: AI writes all Nushell
+     ↓
+ [Nushell]      ← Structured execution
+     ↓
+ [Validate]     ← Law 2: Contract is the law
+     ↓
+   Done
 ```
 
-## The 2 Laws
+## The 4 Laws
+
+| Law | Rule |
+|-----|------|
+| 1 | AI writes all Nushell |
+| 2 | Contract validates all output |
+| 3 | Human sets standard, AI hits it |
+| 4 | Orchestrator runs everything |
 
 See [LAWS.md](bitter-truth/LAWS.md) for full doctrine.
 
-| Law | Rule | Violation |
-|-----|------|-----------|
-| 1. No-Human Zone | AI writes all Nushell | Human cognitive overload |
-| 2. Contract is Law | Draconian validation, self-heal | Hallucinated destruction |
-
 ## Why Nushell?
 
-**AI Goal**: "Filter rows where CPU > 80%"
-
 ```bash
-# Bash: Text parsing, AI gets wrong 20% of time
+# Bash: AI gets wrong 20% of time
 top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}'
 ```
 
 ```nu
-# Nushell: Structured data, AI gets right 99% of time
+# Nushell: AI gets right 99% of time
 sys | get cpu | where usage > 80
 ```
 
-For an AI operator, structured data is the path of least resistance.
+Structured data is the path of least resistance for AI.
 
 ## Structure
 
 ```
 bitter-truth/
-├── LAWS.md                  # The doctrine
-├── contracts/               # DataContract YAML (humans write this)
-│   ├── common.yaml
-│   └── tools/echo.yaml
-├── tools/                   # Nushell scripts (AI writes this)
-│   └── echo.nu
-└── kestra/flows/
-    └── contract-loop.yml    # The workflow
-```
-
-## The Workflow
-
-```
-Generate → Gate → Pass or Self-Heal → Escalate
+├── LAWS.md              # The 4 Laws
+├── contracts/           # Humans write (Law 3)
+├── tools/               # AI writes (Law 1)
+└── kestra/flows/        # Runs everything (Law 4)
 ```
 
 ## Quick Start
@@ -68,16 +60,9 @@ Generate → Gate → Pass or Self-Heal → Escalate
 uv tool install datacontract-cli
 pacman -S nushell
 
-# Validate contract
+# Validate contract (Law 2)
 datacontract lint bitter-truth/contracts/tools/echo.yaml
 
 # Run tool
 echo '{"message": "hello"}' | nu bitter-truth/tools/echo.nu
 ```
-
-## Requirements
-
-- [Nushell](https://www.nushell.sh/)
-- [Data Contract CLI](https://cli.datacontract.com/)
-- [Kestra](https://kestra.io/)
-- [OpenCode](https://opencode.ai/)

@@ -1,9 +1,6 @@
-# The 2 Laws of bitter-truth
+# The 4 Laws of bitter-truth
 
 **AI is the operator. Humans are the architects.**
-
-Nushell outputs structured data. Bash outputs text. For an AI, structured data
-is the path of least resistance. We optimize the environment for the operator.
 
 ---
 
@@ -11,32 +8,9 @@ is the path of least resistance. We optimize the environment for the operator.
 
 **Humans must never write Nushell scripts manually.**
 
-If a human starts writing Nushell, the system has failed. The cognitive load
-for humans to learn a niche shell is too high. This stack only works if the
-AI is the exclusive author.
-
-### Implications
-
 - All `.nu` files are AI-generated
-- Humans write **contracts** (DataContract YAML)
-- Humans write **prompts** (natural language intent)
+- Humans write **contracts** and **prompts**
 - AI compiles intent → Nushell → execution
-
-### The Compiler Metaphor
-
-```
-Human Intent (English)
-        ↓
-   [OpenCode]     ← AI as Compiler
-        ↓
-Nushell Script    ← Machine Code for AI
-        ↓
-   [Kestra]       ← CPU (Scheduling)
-        ↓
-Structured Output
-        ↓
- [DataContract]   ← Memory Protection (Validation)
-```
 
 ---
 
@@ -44,49 +18,57 @@ Structured Output
 
 **DataContract validation must be draconian.**
 
-Since AI writes all logic, the validation of output is the only safeguard
-against hallucinated pipelines that could corrupt or destroy data.
+Since AI writes all logic, the contract is the only safeguard.
 
-### The Self-Healing Protocol
+When validation fails:
+1. AI self-heals automatically
+2. After N failures: fix the **prompt**, not the code
+3. Never: human edits Nushell directly
 
-When DataContract validation fails:
+---
 
-1. **Attempt 1-3**: AI self-heals the Nushell script automatically
-2. **Attempt 4+**: Page human—not to fix the script, but to fix the **prompt**
-3. **Never**: Human edits Nushell directly
+## Law 3: We Set the Standard
+
+**Humans define the target. AI figures out how to hit it.**
 
 ```
-Contract Failure
-      ↓
-  [Feedback]  → "Field 'amount' expected integer, got string"
-      ↓
-  [OpenCode]  → Regenerate Nushell with constraint
-      ↓
-  [Validate]  → Pass? Done : Loop
-      ↓
-  [Escalate]  → After N failures, fix the PROMPT not the CODE
+Human: "I need X with Y constraints"
+        ↓
+   [Contract]  ← The standard
+        ↓
+   [AI Loop]   ← bitter-truth finds the path
+        ↓
+   [Output]    ← Meets the standard or fails
 ```
 
-### Contract Structure
+The human sets the bar. The AI clears it.
 
-```yaml
-# The contract is GOD
-models:
-  Output:
-    fields:
-      amount:
-        type: integer        # NOT negotiable
-        required: true       # NOT optional
-        minimum: 0           # NOT negative
+---
+
+## Law 4: Orchestrator Runs Everything
+
+**Kestra owns execution. Nothing runs outside orchestration.**
+
+- No ad-hoc scripts
+- No manual invocations in production
+- Every execution is tracked, timed, retried
+- The orchestrator is the single source of truth for what ran
+
+```
+Human Intent → Contract → Kestra → AI → Nushell → Validation → Done
+                           ↑
+                     Everything flows through here
 ```
 
 ---
 
 ## Summary
 
-| Law | Rule | Violation |
-|-----|------|-----------|
-| 1 | AI writes all Nushell | Human cognitive overload |
-| 2 | Contract validates all output | Hallucinated destruction |
+| Law | Rule |
+|-----|------|
+| 1 | AI writes all Nushell |
+| 2 | Contract validates all output |
+| 3 | Human sets standard, AI hits it |
+| 4 | Orchestrator runs everything |
 
-**The AI is the operator. The contract is the law.**
+**The AI is the operator. The contract is the law. The orchestrator is the runtime.**
