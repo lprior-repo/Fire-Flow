@@ -56,7 +56,8 @@ tasks:
       - id: generate
         type: io.kestra.plugin.scripts.shell.Commands
         description: AI compiles intent -> Nushell via generate.nu
-        runner: PROCESS
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
         timeout: PT10M
         env:
           XDG_DATA_HOME: "/tmp"
@@ -83,7 +84,8 @@ tasks:
       - id: execute
         type: io.kestra.plugin.scripts.shell.Commands
         description: Run the AI-generated Nushell via run-tool.nu
-        runner: PROCESS
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
         commands:
           - |
             nu -c '
@@ -102,7 +104,8 @@ tasks:
       - id: gate_contract
         type: io.kestra.plugin.scripts.shell.Commands
         description: DataContract is the law - validate via validate.nu
-        runner: PROCESS
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
         commands:
           - |
             nu -c '
@@ -130,7 +133,8 @@ tasks:
       - id: self_heal
         type: io.kestra.plugin.scripts.shell.Commands
         description: Collect feedback for AI to fix itself
-        runner: PROCESS
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
         commands:
           - |
             nu -c '

@@ -1,0 +1,27 @@
+[package]
+name = "kestra-ws"
+version = "0.1.0"
+edition = "2021"
+description = "WebSocket log streamer for Kestra - AI-friendly log monitoring"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+futures-util = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive", "env"] }
+base64 = "0.22"
+url = "2"
+chrono = { version = "0.4", features = ["serde"] }
+colored = "2"
+reqwest = { version = "0.12", features = ["json"] }
+
+[[bin]]
+name = "kestra-ws"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
