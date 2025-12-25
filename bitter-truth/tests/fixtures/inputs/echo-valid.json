@@ -1,0 +1,7 @@
+{
+  "message": "hello world",
+  "context": {
+    "trace_id": "fixture-test-123",
+    "dry_run": false
+  }
+}

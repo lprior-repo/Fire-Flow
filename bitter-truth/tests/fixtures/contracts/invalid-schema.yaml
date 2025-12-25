@@ -1,0 +1,33 @@
+dataContractSpecification: 0.9.3
+id: invalid-schema-test
+info:
+  title: Invalid Schema Contract
+  version: 1.0.0
+  description: Deliberately broken contract for testing validation failures
+
+models:
+  BrokenInput:
+    description: Missing type field - invalid schema
+    fields:
+      value:
+        type: string
+        required: true
+
+  MissingRef:
+    description: References non-existent model
+    type: object
+    fields:
+      data:
+        $ref: "#/models/DoesNotExist"
+        required: true
+
+  # Missing required fields for Output
+  BrokenOutput:
+    type: object
+    # No fields defined - incomplete
+
+servers:
+  local:
+    # Missing type field
+    path: /dev/null
+    format: json

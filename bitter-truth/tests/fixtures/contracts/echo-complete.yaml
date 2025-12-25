@@ -1,0 +1,97 @@
+dataContractSpecification: 0.9.3
+id: bitter-truth-echo
+info:
+  title: Echo Tool Contract
+  version: 1.0.0
+  description: |
+    Proof of concept tool that echoes input back with transformations.
+    Demonstrates the bitter-truth contract-driven tool pattern.
+
+models:
+  EchoInput:
+    description: Input for echo tool
+    type: object
+    fields:
+      message:
+        type: string
+        description: Message to echo back
+        required: true
+        example: "Hello, World!"
+      context:
+        $ref: "#/models/ExecutionContext"
+        required: false
+
+  EchoOutput:
+    description: Output from echo tool
+    type: object
+    fields:
+      echo:
+        type: string
+        description: Original message echoed back
+        required: true
+      reversed:
+        type: string
+        description: Message with characters reversed
+        required: true
+      length:
+        type: integer
+        description: Length of message in characters
+        required: true
+      was_dry_run:
+        type: boolean
+        description: Whether this was a dry run
+        required: true
+
+  ExecutionContext:
+    description: Context passed to every tool invocation
+    type: object
+    fields:
+      trace_id:
+        type: string
+        description: Trace ID for distributed tracing
+        required: false
+      dry_run:
+        type: boolean
+        description: If true, tool validates input but performs no side effects
+        required: false
+      timeout_seconds:
+        type: integer
+        description: Timeout in seconds
+        required: false
+
+  ToolResponse:
+    description: Standard wrapper for all tool outputs
+    type: object
+    fields:
+      success:
+        type: boolean
+        description: Whether the tool succeeded
+        required: true
+      data:
+        $ref: "#/models/EchoOutput"
+        required: false
+      error:
+        type: string
+        description: Error message if success=false
+        required: false
+      trace_id:
+        type: string
+        description: Echo back trace_id for correlation
+        required: false
+      duration_ms:
+        type: double
+        description: Execution duration in milliseconds
+        required: false
+
+servers:
+  local:
+    type: local
+    path: tools/echo.nu
+    format: json
+    description: Local Nushell implementation
+
+quality:
+  type: SLA
+  specification:
+    latency_ms: 100
+    availability_percent: 99.9

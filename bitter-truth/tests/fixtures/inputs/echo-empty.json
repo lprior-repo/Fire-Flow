@@ -1,0 +1,7 @@
+{
+  "message": "",
+  "context": {
+    "trace_id": "test-empty-message",
+    "dry_run": false
+  }
+}

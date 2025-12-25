@@ -1,0 +1,25 @@
+dataContractSpecification: 0.9.3
+id: no-server-tool
+info:
+  title: Contract Without Server Definition
+  version: 1.0.0
+  description: Valid models but no servers section - tests server requirement
+
+models:
+  ValidInput:
+    description: Properly defined input
+    type: object
+    fields:
+      value:
+        type: string
+        required: true
+
+  ValidOutput:
+    description: Properly defined output
+    type: object
+    fields:
+      result:
+        type: string
+        required: true
+
+# No servers section - contract incomplete

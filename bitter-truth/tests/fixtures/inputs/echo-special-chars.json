@@ -1,0 +1,7 @@
+{
+  "message": "Special chars: \"quotes\", 'apostrophes', newline:\n, tab:\t, emoji: 🔥🌊, unicode: ñ café résumé 日本語",
+  "context": {
+    "trace_id": "test-special-chars-001",
+    "dry_run": false
+  }
+}

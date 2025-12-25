@@ -1,0 +1,11 @@
+{
+  "success": true,
+  "data": {
+    "echo": "hello world",
+    "reversed": "dlrow olleh",
+    "length": 11,
+    "was_dry_run": false
+  },
+  "trace_id": "fixture-test-123",
+  "duration_ms": 1
+}

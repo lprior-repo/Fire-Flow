@@ -1,0 +1,31 @@
+dataContractSpecification: 0.9.3
+id: minimal-tool
+info:
+  title: Minimal Valid Contract
+  version: 1.0.0
+  description: Bare minimum valid contract for testing contract parsing
+
+models:
+  MinimalInput:
+    description: Single required field
+    type: object
+    fields:
+      value:
+        type: string
+        description: A single string value
+        required: true
+
+  MinimalOutput:
+    description: Single output field
+    type: object
+    fields:
+      result:
+        type: string
+        description: Processed result
+        required: true
+
+servers:
+  local:
+    type: local
+    path: /dev/null
+    format: json
