@@ -171,5 +171,5 @@ outputs:
 
   - id: validation_result
     type: STRING
-    value: "{{ outputs.validate.validation_result }}"
+    value: "{{ outputs.validate.vars.validation_result }}"
     description: Validation result JSON (for feedback collection)
