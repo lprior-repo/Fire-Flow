@@ -46,14 +46,14 @@ curl --netrc 'http://localhost:4200/api/v1/main/flows/search?namespace=bitter'
 # Deploy a flow
 curl -X PUT --netrc -H "Content-Type: application/x-yaml" \
   --data-binary '@flow.yml' \
-  'http://localhost:4200/api/v1/main/flows/bitter/contract-loop-modular'
+  'http://localhost:4200/api/v1/main/flows/bitter/contract-loop'
 
 # Trigger execution
 curl -X POST --netrc \
   -F contract="/path/to/contract.yaml" \
   -F task="Create echo tool" \
   -F input_json="{}" \
-  'http://localhost:4200/api/v1/main/executions/bitter/contract-loop-modular'
+  'http://localhost:4200/api/v1/main/executions/bitter/contract-loop'
 ```
 
 ### 📚 Reference
@@ -107,7 +107,7 @@ def kestra-api [endpoint: string, --method: string = "GET", --data: string = ""]
 
 - **URL**: http://localhost:4200
 - **Namespace**: `bitter`
-- **Main Flow**: `contract-loop-modular`
+- **Main Flow**: `contract-loop`
 - **Credentials**: Stored in `pass` at:
   - `kestra/username` - email address
   - `kestra/password` - password
@@ -149,10 +149,10 @@ Generate -> Gate -> Pass or Self-Heal -> Escalate after N failures
 
 ```bash
 # Deploy flow
-kestra-api "/api/v1/flows" --method PUT --data "$(cat bitter-truth/kestra/flows/contract-loop-modular.yml)"
+kestra-api "/api/v1/flows" --method PUT --data "$(cat bitter-truth/kestra/flows/contract-loop.yml)"
 
 # Trigger execution
-kestra-api "/api/v1/executions/bitter/contract-loop-modular" --method POST --data '{
+kestra-api "/api/v1/executions/bitter/contract-loop" --method POST --data '{
   "contract": "/path/to/contract.yaml",
   "task": "description of what to generate",
   "input_json": "{}",
@@ -212,8 +212,8 @@ kestra-api "/api/v1/executions/bitter/contract-loop-modular" --method POST --dat
 
 ### Nushell Helper (`tools/kestra.nu`)
 ```bash
-nu tools/kestra.nu flow bitter contract-loop-modular      # Get flow
-nu tools/kestra.nu run bitter contract-loop-modular '{}'  # Trigger
+nu tools/kestra.nu flow bitter contract-loop      # Get flow
+nu tools/kestra.nu run bitter contract-loop '{}'  # Trigger
 nu tools/kestra.nu status {exec-id}                       # Status
 ```
 
