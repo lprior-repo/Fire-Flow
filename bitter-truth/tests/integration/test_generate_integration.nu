@@ -53,9 +53,8 @@ def "test_generate_with_valid_contract_succeeds" [] {
         return
     }
 
-    # Check if opencode is available
-    let opencode_check = (which opencode | complete)
-    if $opencode_check.exit_code != 0 {
+    # Check if opencode is available (which returns table, empty if not found)
+    if (which opencode | is-empty) {
         print "Skipping: opencode not available"
         return
     }
@@ -102,7 +101,7 @@ def "test_generate_with_feedback_incorporates_errors" [] {
         return
     }
 
-    if (which opencode | complete).exit_code != 0 {
+    if (which opencode | is-empty) {
         print "Skipping: opencode not available"
         return
     }
@@ -142,7 +141,7 @@ def "test_generate_timeout_kills_opencode_process" [] {
         return
     }
 
-    if (which opencode | complete).exit_code != 0 {
+    if (which opencode | is-empty) {
         print "Skipping: opencode not available"
         return
     }
@@ -187,7 +186,7 @@ def "test_generate_preserves_trace_id" [] {
         return
     }
 
-    if (which opencode | complete).exit_code != 0 {
+    if (which opencode | is-empty) {
         print "Skipping: opencode not available"
         return
     }
@@ -223,7 +222,7 @@ def "test_generate_prompt_includes_contract_schema" [] {
         return
     }
 
-    if (which opencode | complete).exit_code != 0 {
+    if (which opencode | is-empty) {
         print "Skipping: opencode not available"
         return
     }
@@ -255,7 +254,7 @@ def "test_generate_output_is_valid_nushell" [] {
         return
     }
 
-    if (which opencode | complete).exit_code != 0 {
+    if (which opencode | is-empty) {
         print "Skipping: opencode not available"
         return
     }
@@ -292,7 +291,7 @@ def "test_generate_creates_executable_tool" [] {
         return
     }
 
-    if (which opencode | complete).exit_code != 0 {
+    if (which opencode | is-empty) {
         print "Skipping: opencode not available"
         return
     }
@@ -410,7 +409,7 @@ def "test_generate_uses_llm_cleaner" [] {
         return
     }
 
-    if (which opencode | complete).exit_code != 0 {
+    if (which opencode | is-empty) {
         print "Skipping: opencode not available"
         return
     }

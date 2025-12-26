@@ -83,7 +83,7 @@ def "test_generate_then_execute_succeeds" [] {
         return
     }
 
-    if (which opencode | complete).exit_code != 0 {
+    if (which opencode | is-empty) {
         print "Skipping: opencode not available"
         return
     }
@@ -206,7 +206,7 @@ def "test_entire_generate_execute_validate_flow" [] {
         return
     }
 
-    if (which opencode | complete).exit_code != 0 {
+    if (which opencode | is-empty) {
         print "Skipping: opencode not available"
         return
     }
