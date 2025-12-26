@@ -1,5 +1,67 @@
 # Fire-Flow Project Instructions
 
+## ═══════════════════════════════════════════════════════════════════════════════
+## 🔥 KESTRA API - HOW TO CALL IT (OSS Edition)
+## ═══════════════════════════════════════════════════════════════════════════════
+
+**BASE URL**: `http://localhost:4200`
+**TENANT**: `main` (OSS always uses `main` as tenant)
+**AUTH**: Basic Auth via `~/.netrc` or `-u user:pass`
+
+### 🎯 CORE ENDPOINTS
+
+```bash
+# List/Search Flows
+GET  /api/v1/main/flows/search?namespace={namespace}
+GET  /api/v1/main/flows/{namespace}/{id}
+
+# Deploy Flow
+PUT  /api/v1/main/flows/{namespace}/{id}
+     Content-Type: application/x-yaml
+     Body: <flow YAML>
+
+# Trigger Execution
+POST /api/v1/main/executions/{namespace}/{flowId}
+     -F input1=value1 -F input2=value2
+
+# Get Execution Status
+GET  /api/v1/main/executions/{executionId}
+
+# Get Execution Logs
+GET  /api/v1/main/executions/{executionId}/logs
+```
+
+### 💡 EXAMPLES
+
+```bash
+# Setup auth (run once)
+echo "machine localhost
+  login $(pass kestra/username)
+  password $(pass kestra/password)" > ~/.netrc
+chmod 600 ~/.netrc
+
+# Search flows in 'bitter' namespace
+curl --netrc 'http://localhost:4200/api/v1/main/flows/search?namespace=bitter'
+
+# Deploy a flow
+curl -X PUT --netrc -H "Content-Type: application/x-yaml" \
+  --data-binary '@flow.yml' \
+  'http://localhost:4200/api/v1/main/flows/bitter/contract-loop-modular'
+
+# Trigger execution
+curl -X POST --netrc \
+  -F contract="/path/to/contract.yaml" \
+  -F task="Create echo tool" \
+  -F input_json="{}" \
+  'http://localhost:4200/api/v1/main/executions/bitter/contract-loop-modular'
+```
+
+### 📚 Reference
+- [Kestra OSS API Docs](https://kestra.io/docs/api-reference/open-source)
+- [API Guide](https://kestra.io/docs/how-to-guides/api)
+
+## ═══════════════════════════════════════════════════════════════════════════════
+
 ## RULE 1: NEVER PLAINTEXT CREDENTIALS
 
 **CRITICAL**: Never echo, print, or display credentials in plaintext. Always use secure methods:
