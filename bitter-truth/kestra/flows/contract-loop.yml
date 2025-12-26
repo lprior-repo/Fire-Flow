@@ -134,9 +134,12 @@ tasks:
         state: FAILED
 
   # RETRY LOOP
+  # CRITICAL: concurrencyLimit=1 ensures sequential attempts (not parallel)
+  # Without this, all attempts run simultaneously, causing heap exhaustion
   - id: attempt_loop
     type: io.kestra.plugin.core.flow.ForEach
     values: "{{ range(1, inputs.max_attempts + 1) }}"
+    concurrencyLimit: 1
     tasks:
 
       - id: log_attempt
@@ -236,11 +239,10 @@ tasks:
           dry_run: false
 
       # 4. CHECK: Did we pass?
+      # FIX: Use fromJson() function (not | from_json filter which doesn't exist in Pebble)
       - id: check_pass
         type: io.kestra.plugin.core.flow.If
-        condition: |
-          {% set result = outputs.validate_step.validation_result | from_json %}
-          {{ result.success and result.data.valid }}
+        condition: "{{ fromJson(outputs.validate_step.validation_result).success and fromJson(outputs.validate_step.validation_result).data.valid }}"
         then:
           # SUCCESS
           - id: log_success
