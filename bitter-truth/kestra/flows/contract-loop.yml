@@ -147,7 +147,7 @@ tasks:
       # EXPONENTIAL BACKOFF: Wait before retry (P1-1)
       - id: wait_before_retry
         type: io.kestra.plugin.core.flow.If
-        condition: "{{ taskrun.value != 1 }}"  # Skip on first attempt
+        condition: "{{ taskrun.value | number > 1 }}"  # Skip on first attempt (must compare as number)
         then:
           - id: backoff_delay
             type: io.kestra.plugin.core.flow.Sleep

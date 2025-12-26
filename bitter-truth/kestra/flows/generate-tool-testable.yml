@@ -154,13 +154,21 @@ tasks:
           exit 1
         }
 
-        # Try to parse the tool to check for syntax errors
+        # Try to parse the tool to check for syntax errors using --ide-check
         let syntax_check = do {
-          nu -c $"check ($tool_path | open --raw)"
+          ^nu --ide-check 100 $tool_path
         } | complete
 
-        if $syntax_check.exit_code != 0 {
-          { level: "error", msg: "Generated tool has syntax errors", path: $tool_path, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+        # ide-check outputs JSON - parse to see if there are errors
+        let has_errors = if ($syntax_check.stdout | str length) > 0 {
+          let checks = try { $syntax_check.stdout | lines | where { |l| ($l | str length) > 0 } | each { |l| $l | from json } } catch { [] }
+          ($checks | where { |c| $c.type? == "diagnostic" and $c.severity? == "Error" } | length) > 0
+        } else {
+          false
+        }
+
+        if $has_errors {
+          { level: "error", msg: "Generated tool has syntax errors", path: $tool_path, errors: $syntax_check.stdout, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
           print { success: false, error: "Tool syntax invalid", trace_id: "{{ inputs.trace_id }}" } | to json
           exit 1
         }

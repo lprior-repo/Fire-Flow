@@ -108,7 +108,7 @@ tasks:
       PATH: "/home/lewis/.local/bin:/usr/local/bin:/usr/bin:/bin"
       HOME: /tmp
       SODA_SEND_ANONYMOUS_USAGE_STATS: "false"
-      KESTRA_EXECUTION_ID: "{{ execution.id }}"
+      # NOTE: Do NOT pass KESTRA_EXECUTION_ID to validate.nu - it causes duplicate output
     commands:
       - |
         nu -c '
@@ -152,7 +152,8 @@ tasks:
           # Save full response to file
           $response | to json | save -f /tmp/validation-result.json
           # Only print summary to stdout!
-          print { success: $response.success, valid: ($response.data?.valid? // false), trace_id: "{{ inputs.trace_id }}" } | to json
+          let is_valid = ($response.data?.valid? | default false)
+          print { success: $response.success, valid: $is_valid, trace_id: "{{ inputs.trace_id }}" } | to json
         }
         '
 
