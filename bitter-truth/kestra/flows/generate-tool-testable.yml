@@ -107,6 +107,7 @@ tasks:
       XDG_DATA_HOME: /tmp/opencode-data
       XDG_CACHE_HOME: /tmp/opencode-cache
       XDG_STATE_HOME: /tmp/opencode-state
+      MODEL: local/qwen3-coder
     commands:
       - |
         nu -c '
