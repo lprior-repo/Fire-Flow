@@ -76,7 +76,7 @@ tasks:
     level: INFO
     message: |
       🚀 bitter-truth workflow starting
-      Trace: {{ vars.trace_id }}
+      Trace: {{ render(vars.trace_id) }}
       Contract: {{ inputs.contract }}
       Task: {{ inputs.task }}
       Max Attempts: {{ inputs.max_attempts }}
@@ -88,7 +88,7 @@ tasks:
     taskRunner:
       type: io.kestra.plugin.core.runner.Process
     commands:
-      - mkdir -p {{ vars.work_dir }}
+      - mkdir -p {{ render(vars.work_dir) }}
 
   # VALIDATE CONTRACT EXISTS
   - id: check_contract
@@ -142,7 +142,7 @@ tasks:
       - id: log_attempt
         type: io.kestra.plugin.core.log.Log
         level: INFO
-        message: "→ Attempt {{ taskrun.value }}/{{ inputs.max_attempts }} (Trace: {{ vars.trace_id }})"
+        message: "→ Attempt {{ taskrun.value }}/{{ inputs.max_attempts }} (Trace: {{ render(vars.trace_id) }})"
 
       # EXPONENTIAL BACKOFF: Wait before retry (P1-1)
       - id: wait_before_retry
@@ -168,9 +168,9 @@ tasks:
           task: "{{ inputs.task }}"
           feedback: "{{ vars.feedback }}"
           attempt: "{{ taskrun.value }}/{{ inputs.max_attempts }}"
-          output_path: "{{ vars.work_dir }}/tool.nu"
+          output_path: "{{ render(vars.work_dir) }}/tool.nu"
           timeout_seconds: "{{ inputs.generate_timeout_seconds }}"
-          trace_id: "{{ vars.trace_id }}"
+          trace_id: "{{ render(vars.trace_id) }}"
           tools_dir: "{{ inputs.tools_dir }}"
 
       # TOOL DEDUPLICATION: Cache by hash (Jevons Paradox - prevent duplicates)
@@ -182,7 +182,7 @@ tasks:
         commands:
           - |
             nu -c '
-            let tool_path = "{{ vars.work_dir }}/tool.nu"
+            let tool_path = "{{ render(vars.work_dir) }}/tool.nu"
             let tool_hash = (open $tool_path | hash sha256)
             let cache_dir = "/tmp/kestra-tool-cache"
             let cached_tool = $"($cache_dir)/($tool_hash).nu"
@@ -207,11 +207,11 @@ tasks:
         flowId: execute-tool-testable
         allowFailure: true
         inputs:
-          tool_path: "{{ vars.work_dir }}/tool.nu"
+          tool_path: "{{ render(vars.work_dir) }}/tool.nu"
           tool_input: "{{ inputs.input_json }}"
-          output_path: "{{ vars.work_dir }}/output.json"
-          logs_path: "{{ vars.work_dir }}/logs.json"
-          trace_id: "{{ vars.trace_id }}"
+          output_path: "{{ render(vars.work_dir) }}/output.json"
+          logs_path: "{{ render(vars.work_dir) }}/logs.json"
+          trace_id: "{{ render(vars.trace_id) }}"
           tools_dir: "{{ inputs.tools_dir }}"
           timeout_seconds: "{{ inputs.execute_timeout_seconds }}"
 
@@ -222,8 +222,8 @@ tasks:
         flowId: validate-tool-testable
         inputs:
           contract_path: "{{ inputs.contract }}"
-          output_path: "{{ vars.work_dir }}/output.json"
-          trace_id: "{{ vars.trace_id }}"
+          output_path: "{{ render(vars.work_dir) }}/output.json"
+          trace_id: "{{ render(vars.trace_id) }}"
           tools_dir: "{{ inputs.tools_dir }}"
           dry_run: false
 
@@ -243,8 +243,8 @@ tasks:
         namespace: bitter
         flowId: collect-feedback
         inputs:
-          output_file: "{{ vars.work_dir }}/output.json"
-          logs_file: "{{ vars.work_dir }}/logs.json"
+          output_file: "{{ render(vars.work_dir) }}/output.json"
+          logs_file: "{{ render(vars.work_dir) }}/logs.json"
           validation_errors: "{{ outputs.validate_step.validation_result }}"
           attempt_number: "{{ taskrun.value }}/{{ inputs.max_attempts }}"
 
@@ -272,7 +272,7 @@ tasks:
       DO NOT FIX THE NUSHELL SCRIPT.
       FIX THE PROMPT OR THE CONTRACT.
 
-      Trace: {{ vars.trace_id }}
+      Trace: {{ render(vars.trace_id) }}
       Task: {{ inputs.task }}
       Contract: {{ inputs.contract }}
       Last Feedback: {{ vars.feedback }}
@@ -284,7 +284,7 @@ tasks:
     taskRunner:
       type: io.kestra.plugin.core.runner.Process
     commands:
-      - rm -rf {{ vars.work_dir }}
+      - rm -rf {{ render(vars.work_dir) }}
 
   # AUTO-CLEANUP: Delete old artifacts (Jevons Paradox - prevent accumulation)
   - id: cleanup_old_artifacts
@@ -332,17 +332,17 @@ tasks:
 outputs:
   - id: output_file
     type: STRING
-    value: "{{ vars.work_dir }}/output.json"
+    value: "{{ render(vars.work_dir) }}/output.json"
     description: Final tool output
 
   - id: tool_file
     type: STRING
-    value: "{{ vars.work_dir }}/tool.nu"
+    value: "{{ render(vars.work_dir) }}/tool.nu"
     description: Final generated tool
 
   - id: trace_id
     type: STRING
-    value: "{{ vars.trace_id }}"
+    value: "{{ render(vars.trace_id) }}"
     description: Workflow trace ID
 
   - id: attempts_made
