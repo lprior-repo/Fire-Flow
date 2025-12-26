@@ -1,0 +1,108 @@
+import DocCard from '@site/src/components/DocCard';
+
+# Error handling in flows
+
+There are four ways to handle errors in Windmill flows: [retries](./14_retries.md), [error handlers](./7_flow_error_handler.md), and [early stop/break](./2_early_stop.md).
+
+## Error handler
+
+The Error handler is a special flow step that is executed when an error occurs within a flow.
+
+If defined, the error handler will take as input the result of the step that errored (which has its error in the 'error field').
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/error_handler.mp4"
+/>
+
+<br />
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		color="teal"
+		title="Error handler"
+		description="Configure a script to handle errors."
+		href="/docs/flows/flow_error_handler"
+	/>
+</div>
+
+## Retries
+
+Steps within a flow can be retried a specified number of times and at a defined frequency in case of an error.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/retries_example.mp4"
+/>
+
+<br />
+
+> Example of a flow step giving error if random number = 0 and re-trying 5 times
+
+<br />
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		color="teal"
+		title="Retries"
+		description="Re-try a step in case of error."
+		href="/docs/flows/retries"
+	/>
+</div>
+
+## Early stop / Break
+
+The Early stop/Break feature allows you to define a predicate expression that determines whether the flow should stop early at the end or before a step.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/early_stop.mp4"
+/>
+
+<br />
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		color="teal"
+		title="Early stop / Break"
+		description="Stop early a flow based on a step's result."
+		href="/docs/flows/early_stop"
+	/>
+</div>
+
+## Custom timeout for step
+
+For each step can be defined a timeout. If the execution takes longer than the time limit, the execution of the step will be interrupted.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/custom_timeout.mp4"
+/>
+
+<br />
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		color="teal"
+		title="Custom timeout for step"
+		description="For each step can be defined a timeout. If the execution takes longer than the time limit, the execution of the step will be interrupted."
+		href="/docs/flows/custom_timeout"
+	/>
+</div>
+
+## Error handling
+
+For more details on Error handling, see:
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		color="teal"
+		title="Error handling"
+		description="There are 5 ways to do error handling in Windmill."
+		href="/docs/core_concepts/error_handling"
+	/>
+</div>

@@ -1,0 +1,243 @@
+import DocCard from '@site/src/components/DocCard';
+
+# Windmill AI
+
+Windmill provides ways to have AI help you in your coding experience.
+
+:::info OpenAI integration
+
+If you're rather interested in leveraging OpenAI from your scripts, flows and apps, check [OpenAI Integration](../../integrations/openai.md).
+
+:::
+
+To enable Windmill AI, go to the "Windmill AI" tab in the workspace settings and add a [supported model](#models)'s [resource](../3_resources_and_types/index.mdx). Code completion is disabled by default, but you can enable it in the same tab.
+
+![Enable Windmill AI](./enable_ai.png 'Enable Windmill AI')
+
+## Windmill AI Chat
+
+The AI Chat in Windmill also includes a powerful navigation mode that serves as your personal assistant for understanding and using the platform. This mode goes beyond code generation to provide comprehensive help with Windmill itself.
+
+<iframe
+	style={{ aspectRatio: '16/9' }}
+	src="https://www.youtube.com/embed/ZAlotkJlQ2c"
+	title="Windmill AI Chat"
+	frameBorder="0"
+	allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+	allowFullScreen
+	className="border-2 rounded-lg object-cover w-full dark:border-gray-800"
+></iframe>
+
+<br/>
+
+The navigation mode can assist you with:
+
+- **Answer questions about Windmill**: Get explanations about features, concepts, and best practices for using the platform effectively.
+- **Navigate the app**: The AI can guide you through the Windmill interface, helping you locate specific features, settings, and tools you need.
+- **Provide documentation links**: When you need more detailed information, the AI will direct you to relevant sections of this documentation for deeper learning.
+- **Fetch API information**: The AI can retrieve and explain relevant API details to help you understand what data and options are available for your use case. 
+- **Fill script and flow inputs**: Speed up your workflow by letting the AI automatically populate form fields for scripts and flows based on context and your requirements.
+- **Custom form filling instructions**: You can provide specific instructions to the AI on how to fill out forms in script and flow settings, making it adapt to your particular workflow needs.
+
+This navigation mode makes Windmill more accessible by providing contextual help exactly when and where you need it, whether you're learning the platform or looking for quick assistance during development.
+
+### API mode
+
+The AI chat also includes an API mode that allows you to perform basic operations on your Windmill workspace directly through conversation. You can interact with the following endpoints:
+
+- **jobs**: Monitor, cancel, and retrieve information about running and completed jobs
+- **scripts**: List, create, edit, and manage your scripts
+- **flows**: Work with your flows and their configurations
+- **resources**: Manage workspace resources and connections
+- **variables**: Handle workspace and user variables
+- **schedules**: Create and modify scheduled jobs
+- **workers**: Check worker status and manage worker groups
+
+These API endpoints are also available through the [Model Context Protocol (MCP)](../51_mcp/index.mdx), enabling seamless integration with MCP-compatible tools and clients for automated workflow management.
+
+## Windmill AI for scripts
+
+### AI Chat
+
+The script editor includes an integrated AI chat panel designed to assist with coding tasks directly. 
+The assistant can generate code, identify and fix issues, suggest improvements, add documentation, and more.
+
+You can open the AI chat panel using **Cmd+L** (Mac) or **Ctrl+L** (Windows/Linux). When you have code selected, it will automatically include the selected code in your message to the AI.
+
+Key features:
+- When the AI suggests code changes, you can apply or discard specific parts of the suggestion, rather than having to accept or reject the entire block.
+- You can provide additional context to guide the AI's suggestions, such as database schemas, deployed script diffs, and runtime errors. Access the context menu by clicking the context button or typing `@` directly in the chat input.
+- The panel includes built-in shortcuts for common tasks like fixing bugs or optimizing code.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/ai_chat.mp4"
+/>
+
+### Code completion
+
+The script editor includes code autocomplete that provides real-time suggestions as you type. 
+Currently, this feature requires [Mistral Codestral](https://mistral.ai/news/codestral), which excels at code completion thanks to their specialized [FIM (Fill-in-Middle)](https://docs.mistral.ai/capabilities/code_generation/#fill-in-the-middle-endpoint) endpoint.
+
+The autocomplete feature can be enabled globally in the workspace settings. Individual users can then toggle it on or off in their personal script editor settings.
+
+### Summary copilot
+
+From your code, the AI assistant can generate a script summary.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/summary_compilot.mp4"
+/>
+
+### Legacy AI features
+
+The following guides are still applicable for code editing of inline scripts inside flows and apps.
+
+#### Code generation
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/ai_generation.mp4"
+/>
+
+<br />
+
+In a [code editor](../../code_editor/index.mdx) (Script, Flow, Apps), click on `AI` and write a prompt describing what the script should do. The script will follow Windmill's main requirements and features (exposing a main function, importing libraries, using resource types, declaring required parameters with types). Moreover, when creating an SQL or GraphQL script, the AI assistant will take into account the database/GraphQL API schema **when selected**.
+
+![Prompt](../../assets/code_editor/ai_gen.png 'Prompt')
+
+:::tip Pro tips
+The AI assistant is particularly effective when generating Python and TypeScript (Bun runtime) scripts, so we recommend using these languages when possible.
+Moreover, you will get better results if you specify in the prompt what the script should take as parameters, what it should return, the specific integration and libraries it should use if any.
+For instance, in the demo video above we wanted to generate a script that fetches the commits of a GitHub repository passed as a parameter, so we wrote: `fetch and return the commits of a given repository on GitHub using octokit`.
+:::
+
+#### Code editing
+
+Inside the `AI Gen` popup, you can choose to edit the existing code rather than generating a new one. The assistant will modify the code according to your prompt.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/ai_edit.mp4"
+/>
+
+#### Code fixing
+
+Upon error when executing code, you will be offered to "AI Fix" it. The assistant will automatically read the code, explain what went wrong, and suggest a way to fix it.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/ai_fix.mp4"
+/>
+
+
+## Windmill AI for flows
+
+### AI Flow Chat
+
+The [flow editor](../../flows/1_flow_editor.mdx) includes an integrated AI chat panel that lets you create and modify flows using natural language. 
+Just describe what you want to achieve, and the AI will build the flow for you, step by step.
+
+It can add scripts, [loops](../../flows/12_flow_loops.md), and [branches](../../flows/13_flow_branches.md), searching your workspace and [Windmill Hub](https://hub.windmill.dev/) for relevant scripts or generating new ones when needed or on request.
+It automatically sets up flow inputs and connects steps by filling in parameters based on context.
+For loops and branches, the AI sets suitable iterator expressions and predicates based on your flow's data.
+
+<iframe
+	style={{ aspectRatio: '16/9' }}
+	src="https://www.youtube.com/embed/L7JPHDtbSNM"
+	title="AI Flow Chat"
+	frameBorder="0"
+	allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+	allowFullScreen
+	className="border-2 rounded-lg object-cover w-full dark:border-gray-800"
+></iframe>
+
+### Script mode in AI Flow Chat
+
+If you're working on an inline script in your flow, you can switch to script mode using the toggle to access the same AI assistance as in the script editor — including the ability to add context like database schemas, diffs, and preview errors, along with granular apply/reject controls and quick actions.
+
+### Summary copilot for steps
+
+From your code, the AI assistant can generate a summary for flow steps.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/summary_copilot_steps.mp4"
+/>
+
+### Step input copilot
+
+When adding a new step to a flow, the AI assistant will suggest inputs based on the previous steps' results and flow inputs.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/step_input_copilot.mp4"
+/>
+
+### Flow loops iterator expressions from context
+
+When adding a [for loop](../../flows/12_flow_loops.md), the AI assistant will suggest iterator expressions based on the previous steps' results.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/iterator_prefill.mp4"
+/>
+
+### Flow branches predicate expressions from prompts
+
+When adding a [branch](../../flows/13_flow_branches.md), the AI assistant will suggest predicate expressions from a prompt.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/branch_predicate_copilot.mp4"
+/>
+
+## AI form filling
+
+The AI assistant can fill script and flow run forms based on your requirements. To enable it, go to the script or flow settings and enable "AI Form Filling". You will also be able to provide specific instructions to the AI on how to fill out the run form, making it adapt to your particular workflow needs.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/fill_form_inputs.mp4"
+/>
+
+## CRON schedules from prompt
+
+The AI assistant can generate CRON [schedules](../1_scheduling/index.mdx) from a prompt.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/cron_from_prompt.mp4"
+/>
+
+## Models
+
+Windmill AI supports:
+- OpenAI's [models](https://platform.openai.com/docs/models) (o1 currently not supported)
+- Azure OpenAI's [models](https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models)
+	- Base URL format: `https://{your-resource-name}.openai.azure.com/openai`
+- Anthropic's [models](https://docs.anthropic.com/en/docs/about-claude/models/all-models) (including Claude 3.7 Sonnet in extended thinking mode)
+- Mistral's [Codestral](https://mistral.ai/technology/#models)
+- DeepSeek's [models](https://api-docs.deepseek.com/quick_start/pricing)
+- Google's [Gemini models](https://ai.google.dev/models/gemini)
+- Groq's [models](https://console.groq.com/docs/models)
+- OpenRouter's [models](https://openrouter.ai/models)
+- Together AI's [models](https://docs.together.ai/docs/serverless-models)
+- AWS Bedrock's [models](https://aws.amazon.com/bedrock/)
+  - Required configuration: AWS region and long term API key
+- Custom AI: base URL and API key of any AI provider that is OpenAI API-compatible
+  - For Ollama and other local models, select "Custom AI" and provide your Ollama server URL (e.g., `http://localhost:11434/v1` for local Ollama or your custom endpoint)
+
+If you'd like to use a model that isn't in the default dropdown list, you can use any model supported by a provider (like `gpt-4o-2024-05-13` or `claude-3-7-sonnet-20250219`) by simply typing the model name in the model input field and pressing enter.

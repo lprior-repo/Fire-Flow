@@ -1,0 +1,123 @@
+# Windmill Workspace Configuration
+# Fire-Flow: Contract-driven AI code generation
+#
+# Documentation: https://www.windmill.dev/docs/advanced/cli/sync
+
+# TypeScript runtime (bun is faster, deno is more compatible)
+defaultTs: bun
+
+# ============================================
+# File Filtering
+# ============================================
+
+# Include patterns (glob format)
+includes:
+  - "f/**"  # All flows and scripts in f/ folder
+
+# Exclude patterns
+excludes:
+  - "**/*.md"           # Documentation files
+  - "**/*.test.*"       # Test files
+  - "**/fixtures/**"    # Test fixtures
+
+# Additional includes (useful for overrides)
+extraIncludes: []
+
+# ============================================
+# Skip Flags (what to exclude from sync)
+# ============================================
+
+skipVariables: false      # Include variables in sync
+skipResources: false      # Include resources in sync
+skipResourceTypes: false  # Include resource types
+skipSecrets: true         # SECURITY: Skip secrets by default
+skipScripts: false        # Include scripts
+skipFlows: false          # Include flows
+skipApps: false           # Include apps
+skipFolders: false        # Include folder permissions
+
+# ============================================
+# Include Flags (what to explicitly include)
+# ============================================
+
+includeSchedules: true    # Include cron schedules
+includeTriggers: true     # Include HTTP/WebSocket/Kafka triggers
+includeUsers: false       # Exclude user management
+includeGroups: false      # Exclude group management
+includeSettings: false    # Exclude workspace settings
+includeKey: false         # Exclude encryption key
+
+# ============================================
+# Git Branch Validation
+# ============================================
+
+# Skip validation for feature branches (set true for temporary branches)
+skipBranchValidation: false
+
+# ============================================
+# Git Branch-Specific Configuration
+# ============================================
+
+gitBranches:
+  # Development branch
+  main:
+    baseUrl: 'http://localhost:8000/'  # Local Windmill instance
+    workspaceId: dev
+    overrides:
+      skipSecrets: true      # Don't sync secrets in dev
+      includeSettings: false
+    specificItems:
+      resources:
+        - "f/fire-flow/dev_*"
+      variables:
+        - "f/fire-flow/debug_*"
+
+  # Staging branch (testing before production)
+  staging:
+    baseUrl: 'https://staging.windmill.dev/'
+    workspaceId: fire-flow-staging
+    overrides:
+      skipSecrets: true      # Secrets managed separately
+      includeSettings: true  # Include workspace settings
+    promotionOverrides:
+      skipApps: false        # Include apps during promotion
+      skipFlows: false       # Include flows during promotion
+    specificItems:
+      resources:
+        - "f/fire-flow/staging_*"
+      variables:
+        - "f/fire-flow/staging_*"
+
+  # Production branch
+  production:
+    baseUrl: 'https://app.windmill.dev/'
+    workspaceId: fire-flow-prod
+    overrides:
+      skipSecrets: false     # Include secrets (encrypted)
+      includeSettings: true  # Include workspace settings
+    promotionOverrides:
+      skipApps: true         # Don't overwrite apps during promotion
+    specificItems:
+      resources:
+        - "f/fire-flow/prod_*"
+      variables:
+        - "f/fire-flow/prod_*"
+
+  # Common items across all branches
+  commonSpecificItems:
+    resources:
+      - "f/fire-flow/config/**"
+    variables:
+      - "f/fire-flow/env_*"
+
+# ============================================
+# Codebase Bundling (for TypeScript/JavaScript)
+# ============================================
+
+codebases: []
+# Example:
+# codebases:
+#   - relative_path: './shared-lib'
+#     includes: ['**/*.ts']
+#     excludes: ['**/*.test.ts', '**/node_modules/**']
+#     external: ['lodash', 'axios']

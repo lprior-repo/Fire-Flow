@@ -1,0 +1,63 @@
+import DocCard from '@site/src/components/DocCard';
+
+# Version control
+
+Manage changes to scripts workflows, apps and resources using commits & push on remote repositories.
+
+## Git sync
+
+From the workspace settings, you can set a [git_repository](../../integrations/git_repository.mdx) resource on which the workspace will automatically commit and push scripts, flows and apps to the repository on each [deploy](../../core_concepts/0_draft_and_deploy/index.mdx).
+
+This video shows how to set up a Git repository for a workspace (Git sync - sync mode).
+
+<iframe
+	style={{ aspectRatio: '16/9' }}
+	src="https://www.youtube.com/embed/cHrREDmrnUM?vq=hd1080&hd=1&quality=highres"
+	title="Git sync"
+	frameBorder="0"
+	allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+	allowFullScreen
+	className="border-2 rounded-lg object-cover w-full dark:border-gray-800"
+></iframe>
+
+<br />
+
+Git sync is [Cloud plans and Self-Hosted Enterprise Edition](/pricing) only.
+
+More details at:
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Git sync"
+		description="Connect a Windmill workspace to a Git repository to automatically commit and push scripts, flows and apps to the repository on each deploy."
+		href="/docs/advanced/git_sync"
+	/>
+</div>
+
+## CLI sync
+
+You can use [Windmill CLI](../3_cli/index.mdx) to sync workspace to a git repository.
+
+More details at:
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Command-line interface - Sync"
+		description="Synchronize folders & git repositories to a Windmill instance"
+		href="/docs/advanced/cli/sync"
+	/>
+</div>
+
+## Versioning in Windmill UI
+
+Scripts, Flows and Apps have unique [versions](../../core_concepts/34_versioning/index.mdx) when deployed. You can find the said version any time, fork it or go back to this version.
+
+More details at:
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Versioning"
+		description="Scripts, when deployed, can have a parent script identified by its hash."
+		href="/docs/core_concepts/versioning"
+	/>
+</div>

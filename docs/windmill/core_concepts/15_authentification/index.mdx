@@ -1,0 +1,150 @@
+import DocCard from '@site/src/components/DocCard';
+
+# Authentication
+
+Windmill provides flexible authentication options to ensure secure access to the platform. Users can authenticate through Single Sign-On (SSO) with a restricted domain or with a simple e-mail if added manually by superadmins.
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Roles and permissions"
+		description="Find out about the roles within a Windmill instance and their respective permissions."
+		href="/docs/core_concepts/roles_and_permissions"
+	/>
+</div>
+
+## Restricted domain authentication
+
+Windmill supports authentication [through SSO](../../misc/2_setup_oauth/index.mdx) for users with email addresses from a restricted domain. This allows organizations to control access to Windmill based on their domain policy. Users with email addresses from the authorized domain can authenticate seamlessly using their SSO credentials.
+
+To enable restricted domain authentication, an administrator can configure the authorized domain in the OAuth configuration by setting 'allowed_domains' to the desired domains (e.g: 'windmill.dev' to accept only Google/Microsoft logins with a xxx@windmill.dev address). Once configured, users with email addresses from the authorized domain will be able to log in using their SSO provider.
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Setup OAuth and SSO"
+		description="Windmill supports Single Sign-On for Microsoft, Google, GitHub, GitLab, Okta, and domain restriction."
+		href="/docs/misc/setup_oauth"
+	/>
+</div>
+
+## Manually Add Users to a Windmill Instance
+
+As a superadmin of the instance, you have the ability to manually add users to the Windmill instance. This is useful for inviting users who do not have SSO credentials or for providing access to individuals outside the restricted domain.
+
+To manually add users:
+
+1. Log in to the Windmill instance as a superadmin.
+2. Click on your username and pick [Instance settings](../../advanced/18_instance_settings/index.mdx).
+3. Fill:
+   - Email: The email address of the user.
+   - Password: A password for the user's account.
+   - Name (Optional): The name of the user.
+   - Company (Optional): The company or organization the user belongs to.
+4. "Add user to instance".
+
+![Manually Add Users](./add_global_users.png 'Manually Add Users')
+
+If [SMTP is configured](../../advanced/18_instance_settings/index.mdx#smtp), an email will be sent to the user with their account details and instructions for accessing Windmill.
+
+By default, users are not invited to any workspace, unless auto-invite has been set-up.
+
+<iframe
+	style={{ aspectRatio: '16/9' }}
+	src="https://www.youtube.com/embed/Wyq6d0bkuGo"
+	title="YouTube video player"
+	frameBorder="0"
+	allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+	allowFullScreen
+	className="border-2 rounded-lg object-cover w-full dark:border-gray-800"
+></iframe>
+
+<br />
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Self-host Windmill"
+		description="Self host Windmill in 2 minutes."
+		href="/docs/advanced/self_host#authentication-and-user-management"
+	/>
+</div>
+
+## Adding Users to a Workspace
+
+Once added to an instance, users can create their own workspace. However, by default they will not be invited to any workspace.
+
+Windmill can be configured to remove the ability for non-[superadmins](../16_roles_and_permissions/index.mdx) to create workspace using the: CREATE_WORKSPACE_REQUIRE_SUPERADMIN env variable.
+
+### Manually
+
+From the Workspace settings, in the `Users & Invites` tab, any admin can manually add users, filling:
+
+- `email`: the email address linked to the Windmill account.
+- `user`: the username (specific to workspace).
+
+Users can be given roles Operator, Developer or Admin. Any user can also be manually removed.
+
+![Manually Add User to Workspace](./add_user_to_workspace.png 'Manually add user to workspace')
+
+The user will be added to the workspace even if no Windmill account is created yet. Once access is created to a Windmill account, the workspace will be available from the "Select a workspace" menu.
+
+![Select a workspace](./select_workspace.png 'Select a workspace')
+
+You can also choose to invite users instead of adding them directly. You only need to fill in the users' email and they will have to pick the username.
+
+![Invite a user manually](./invite_manually.png 'Invite a user manually')
+
+> Add the user's email to the list of invites, with the appropriate [level of permission](../16_roles_and_permissions/index.mdx).
+
+<br />
+
+![Select an invited workspace](./get_invite.png 'Select an invited workspace')
+
+> The invite will be available in the "Invites to join a Workspace" section.
+
+<br />
+
+![Set Username](./set_username.png 'Set a Username')
+
+> From where the users can set their username.
+
+<br />
+
+If [SMTP is configured](../../advanced/18_instance_settings/index.mdx#smtp), the invite will be sent even if no Windmill account is created yet. Once access is created to a Windmill account, an invite will be available from the "Select a workspace" menu.
+
+### Auto invite
+
+You can send auto-invites to the workspace to users from your domain.
+
+From the Workspace settings, in the `Users & Invites` tab, go to "Set auto-invite to [domain]".
+
+![Auto Invites](./auto_invite.png 'Auto invites')
+
+This will add users to the list of Pending Invites, from where you can still manually cancel any invite.
+
+At last, you can enable "Auto-invited users to join as operators".
+
+![Pending invites](./pending_invites.png 'Pending invites')
+
+Once access is created to a Windmill account, an invite will be available in the "Invites to join a Workspace" section.
+
+![Select an invited workspace](./get_invite.png 'Select an invited workspace')
+
+From where each user can set their username.
+
+![Set Username](./set_username.png 'Set a Username')
+
+## SCIM/SAML
+
+Windmill supports [SCIM and SAML](../../misc/14_saml_and_scim/index.md) for user provisioning and authentication. When SCIM is configured, groups from your identity provider are automatically synchronized as [instance groups](../8_groups_and_folders/index.mdx#instance-groups), eliminating the need for manual group management.
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="SAML & SCIM"
+		description="Configure Okta or Microsoft for both SAML and SCIM."
+		href="/docs/misc/saml_and_scim"
+	/>
+	<DocCard
+		title="Groups and folders"
+		description="Learn about instance groups and how they work with SCIM."
+		href="/docs/core_concepts/groups_and_folders#instance-groups"
+	/>
+</div>

@@ -1,0 +1,235 @@
+# AI agents
+
+AI Agents steps allow you to integrate AI agents directly into your Windmill [flows](../../flows/1_flow_editor.mdx). They provide an interface to connect with various AI providers and models, allowing you to process data, generate content, execute actions (Windmill [scripts](../../script_editor/index.mdx)), and make decisions as part of your automated workflows.
+
+<iframe
+    style={{ aspectRatio: '16/9', marginBottom: '1.25rem' }}
+    src="https://www.youtube.com/embed/8MSeZnaaCnQ?enablejsapi=1&rel=0&vq=hd1080"
+    title="YouTube video player"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    allowFullScreen
+    className="border-2 rounded-lg object-cover w-full dark:border-gray-800 my-6"
+    id="aiAgentsDemo"
+></iframe>
+
+## Configuration
+
+### Provider selection
+
+Choose from [supported AI providers](../22_ai_generation/index.mdx#models) including OpenAI, Azure OpenAI, Anthropic, Mistral, DeepSeek, Google AI (Gemini), Groq, OpenRouter, Together AI, or Custom AI endpoints.
+
+### Resource configuration
+
+Select or create an AI resource that contains your API credentials and endpoint configuration. [Resources](../3_resources_and_types/index.mdx) allow you to securely store and reuse AI provider credentials across multiple flows.
+
+### Model selection
+
+Choose the specific model you want to use from your selected provider. Available models depend on your chosen provider and resource configuration.
+
+## Script tools
+
+AI Agents can be equipped with script tools that extend their capabilities beyond text and image generation. Tools are Windmill [scripts](../../script_editor/index.mdx) that the AI can call to perform specific actions or retrieve information. You can add tools from three sources:
+
+- **Inline scripts** - Write custom tools directly within the flow
+- **Workspace scripts** - Use existing scripts from your Windmill workspace
+- **Hub scripts** - Leverage pre-built tools from the Windmill Hub
+
+Each script tool must have a unique name within the AI agent step and contain only letters, numbers, and underscores. It should be descriptive of the tool's function to help the AI understand when to use them.
+
+When script tools are configured, the AI agent can decide when and how to use them based on the user's request. It selects the most appropriate tool by name, and issues a tool call with JSON arguments that conform to the tool's input schema. Windmill executes the underlying `script` and returns a JSON result, which is surfaced back to the model as a tool response message and is included in `messages`.
+
+### MCP tools
+
+AI Agents can connect to [MCP (Model Context Protocol)](../51_mcp/index.mdx) servers as tools, enabling access to any tools exposed by MCP-compatible servers. To use MCP tools:
+
+1. Create an MCP resource in Windmill with:
+   - **Name**: Identifier for the MCP resource
+   - **URL**: The MCP server endpoint URL
+   - **Auth token** (optional): Authentication token for the MCP server
+   - **Headers** (optional): Additional HTTP headers for the connection
+
+2. Add the MCP resource to your AI Agent step as a tool
+
+3. The AI agent will automatically discover and use tools exposed by the MCP server
+
+**Note**: Only HTTP streamable MCP servers are supported.
+
+## Input parameters
+
+### Required parameters
+
+#### user_message (string)
+The main input message or prompt that will be sent to the AI model. This can include static text, dynamic content from previous flow steps, or templated strings with variable substitution.
+
+#### system_prompt (string) 
+The system prompt that defines the AI's role, behavior, and context. This helps guide the model's responses and ensures consistent behavior across interactions.
+
+### Optional parameters
+
+#### output_type (text | image)
+Specifies the type of output the AI should generate:
+- `text` - Generate text responses (default).
+- `image` - Generate image outputs (supported by OpenAI, Google AI (Gemini), and OpenRouter). Requires an [S3 object storage](../38_object_storage_in_windmill/index.mdx) to be configured at the workspace level.
+
+#### output_schema (json-schema)
+Define a JSON schema that the AI agent will follow for its response format. This ensures structured, predictable outputs that can be easily processed by subsequent flow steps.
+
+#### messages_context_length (number)
+Specifies the number of previous messages to include as context for the AI agent. This enables the agent to maintain conversation history and remember past interactions. When set, the agent will have access to the specified number of previous messages from the conversation, allowing for more contextual and coherent responses across multiple interactions.
+
+##### Using messages_context_length with webhooks
+
+When using `messages_context_length` via webhook, you must include a `memory_id` query parameter in your request. The `memory_id` must be a 32-character UUID that uniquely identifies the conversation context. This allows the AI agent to maintain message history across webhook calls.
+
+Example webhook URL:
+```
+https://your-windmill-instance/api/w/your-workspace/jobs/run_wait_result/f/your-flow?memory_id=550e8400e29b41d4a716446655440000
+```
+
+#### streaming (optional)
+
+Whether to stream the progress of the AI agent.
+The stream will contain json payloads separated by newlines. The payloads can be of the following types:
+
+```json
+{
+	"type": "token_delta", // sent everytime the AI generates a new token
+	"content": "string",
+}
+```
+
+```json
+{
+	"type": "tool_call", // sent when the tool call is started
+	"call_id": "string",
+    "function_name": "string",
+    "function_arguments": "string",
+}
+```
+
+```json
+{
+	"type": "tool_call_arguments", // sent all arguments have been received
+	"call_id": "string",
+    "function_name": "string",
+    "function_arguments": "string",
+}
+```
+
+```json
+{
+	"type": "tool_execution", // sent when the tool job is started
+	"call_id": "string",
+    "function_name": "string",
+}
+```
+
+```json
+{
+	"type": "tool_result", // sent when the tool job is completed
+	"call_id": "string",
+    "function_name": "string",
+    "result": "string",
+    "success": true, // whether the tool job completed successfully
+}
+```
+
+The final result of the step will contain an additional field `wm_stream` with the complete stream.
+
+You can use the [SSE stream webhooks](../4_webhooks/index.mdx#sse-stream-webhooks) to get the stream. 
+The `new_result_stream` field of an SSE event can contain multiple payloads at a time, make sure to split on line breaks. 
+Only complete payloads are streamed, you do not need to handle partial JSON.
+
+#### user_images (optional)
+Allows you to pass images as input to the AI model for analysis, processing, or context. The AI can analyze the image content and respond accordingly. Requires an [S3 object storage](../38_object_storage_in_windmill/index.mdx) to be configured at the workspace level.
+
+#### max_completion_tokens (number)
+Controls the maximum number of tokens the AI can generate in its response. This helps manage costs and ensures responses stay within desired length limits.
+
+#### temperature (number)
+Controls randomness in text generation:
+- `0.0` - Deterministic, focused responses
+- `2.0` - Maximum creativity and randomness
+- Default values typically range from 0.1 to 1.0
+
+## Chat mode
+
+Flows with AI agents can be run in chat mode, which transforms the standard flow interface into a conversational chat UI. This mode is particularly useful for creating interactive AI applications where users can have ongoing conversations with the AI agent.
+
+### Enabling chat mode
+
+To enable chat mode for a flow:
+1. Navigate to the flow inputs configuration
+2. Toggle the "Chat mode" option on the top right
+3. When the flow is run, it will display as a chat interface instead of the standard form interface
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	autoPlay
+	loop
+	src="/videos/chat_mode.mp4"
+/>
+
+
+### Features
+
+- **Conversational interface**: The flow runs in a chat-like UI where users can send messages and receive responses in a familiar messaging format
+- **Multiple conversations**: Users can maintain multiple different conversation threads within the same flow
+- **Conversation history**: Each conversation maintains its own history, allowing users to scroll back through previous messages
+- **Persistent context**: When using the `messages_context_length` parameter, the AI agent can remember and reference previous messages in the conversation
+
+### Recommended configuration
+
+For optimal chat mode experience, we recommend placing an AI agent step at the end of your flow with both `streaming` and `messages_context_length` enabled. This configuration:
+- Enables real-time response streaming for a more interactive chat experience
+- Maintains conversation context across multiple messages
+
+### Use cases
+
+Chat mode is ideal for:
+- Developing conversational workflows
+- Implementing AI assistants with memory
+- Building chatbots that can execute actions through tools
+
+## Output
+
+The AI Agent step returns an object with two keys:
+
+#### output
+Contains the content of the final response from the AI agent:
+- Text output:
+    - **When no output schema is specified**: Returns the last message content, which can be a string or an array containing strings.
+    - **When an output schema is specified**: Returns the structured output conforming to the defined JSON schema.
+- Image output:
+    - Returns the S3 object of the image
+
+This is typically what you'll use in subsequent flow steps when you need the AI's final answer or result.
+
+#### messages
+Only in text output mode, contains the complete conversation history, including:
+- User input messages
+- Assistant intermediate outputs
+- Tool calls made by the AI
+- Tool execution results
+
+The `messages` array provides full visibility into the AI's reasoning process and tool usage, which can be useful for debugging, logging, or understanding how the AI reached its conclusion.
+
+#### wm_stream (optional)
+
+Only included in streaming mode, contains the complete stream.
+
+## Debugging
+
+![AI Agent Debugging](./ai_agent_debugging.png 'AI Agent Debugging')
+
+### Flow-level visualization
+Tool calls are displayed directly on the flow graph as separate nodes connected to the AI Agent step. You can click on these tool call nodes to view detailed execution information, including inputs, outputs, and execution logs.
+
+### Detailed logging
+In the logging panel of the AI Agent step, you can see the comprehensive logging:
+- All input parameters passed to the AI agent
+- Tool calls made by the AI, including which tools were selected and their inputs
+- Individual tool execution results with full job details
+- The final AI response and complete message history
+
+This detailed view allows you to trace through the AI's decision-making process and verify that tools are being called correctly with the expected inputs and outputs.

@@ -1,0 +1,404 @@
+# HTTP routes
+
+Windmill supports HTTP Routes as triggers to execute runnables (scripts or flows) whenever the route is hit by an external HTTP request, and it can also serve static files or websites.
+
+This feature is ideal for integrating with third-party services, custom webhooks, or internal systems where events are sent via HTTP.
+
+---
+
+## How it works
+
+You define a custom HTTP route with a specific method (GET, POST, PUT, PATCH, DELETE).  
+When the route is called, Windmill triggers the selected script or flow.
+
+Each route can be protected with various authentication mechanisms, ranging from simple API keys to advanced HMAC signature validation or even fully custom logic.
+
+Among the supported authentication mechanisms, there's also **Windmill Auth**, which uses a JWT token to authenticate requests and ensure you have read access to the route and the runnable. You can generate your personal Windmill JWT token directly from your user settings and use it to securely access your HTTP routes.
+
+You can configure the route to run:
+- **Synchronously**: Wait for the script to complete and return the result.
+- **Asynchronously**: Return a job ID immediately; the script runs in the background.
+
+---
+
+## Creating an HTTP route
+
+Windmill supports two ways to create HTTP routes:
+
+- **Manual creation**, where you define a path, method, and bind it to a runnable.
+- **Automatic generation** from an OpenAPI specification, enabling batch creation.
+
+#### To create a route manually:
+
+- Navigate to the **Custom HTTP routes** page.
+- Click the **New route** button.
+- Fill in the route configuration fields
+- Click **Save** to create the route.
+
+### Generate routes from an OpenAPI specification
+
+Windmill can generate HTTP routes directly from an OpenAPI 2.0+ specification in JSON or YAML format.
+
+You can provide the specification in one of three ways:
+- Paste raw content
+- Upload a file
+- Provide a public URL
+
+#### To generate routes:
+
+- Navigate to the **Custom HTTP routes** page.
+- Click the **From OpenAPI spec** button.
+- Pick a folder for the generated routes.
+- Choose your input method and provide the OpenAPI spec.
+- Click **Generate HTTP routes**.
+
+#### Behavior and limitations:
+
+- If a path object has a `summary` field, it will be used as suffix for the trigger path.
+  - If the `summary` exceeds 255 characters, it will be **automatically truncated** to fit the maximum allowed length.
+- If no `summary` is defined, Windmill generates a unique route path automatically.
+- Generated routes **do not include a script or flow binding** (`script_path`) by default.
+  - This means requests to the route will return an error until a runnable is attached.
+- You can:
+  - **Save routes immediately without modifying them**.
+  - **Edit any route before or after saving**, to assign a runnable, change route path, etc.
+- External `$ref` references (e.g., referencing outside the spec) are **not supported**.
+  - You must resolve them beforehand.
+  - Only internal references (e.g., `#/components/...`) are supported.
+
+
+You can use `:param` in the route path and access these as `params` in a [preprocessor](https://docs.windmill.dev/docs/core_concepts/preprocessors).
+
+> ℹ️ **Only workspace admins** can create routes.  
+> Once created, all properties of a route **except the HTTP path** can be modified by any user with **write access** to the route.  
+> Learn more about [Admins workspace](../../advanced/18_instance_settings/index.mdx#admins-workspace).
+
+---
+
+### Workspace prefix
+
+On Windmill Cloud, all HTTP routes are automatically prefixed by the `workspace_id` (e.g., `{workspace_id}/{path}`).  
+This ensures that different workspaces can define the same route paths independently.
+
+On self-hosted Windmill, you can optionally enable the **workspace prefix** setting to achieve the same behavior.
+
+When workspace prefix is enabled:
+- Multiple workspaces can define the same route path without conflict.
+- HTTP triggers can be deployed across different workspaces if no conflicting route exists.
+
+When workspace prefix is disabled (on self-hosted):
+- Route paths will be **globally unique** across the entire instance.
+- A route path cannot be reused by another workspace unless it is first deleted.
+
+**Example:**  
+If workspace A creates the route `/webhooks/github`, then without workspace prefix, no other workspace can create `/webhooks/github`.  
+With workspace prefix enabled, workspace A could have `/workspace_a/webhooks/github` and workspace B could have `/workspace_b/webhooks/github`.
+
+---
+
+### Select a script or flow
+
+- Pick the runnable to be triggered when the route is called.
+- Use the “Create from template” button to generate a boilerplate if needed.
+
+Example script:
+```ts
+export async function main(/* args from the request body */) {
+  // your code here
+}
+```
+
+With a preprocessor:
+```ts
+export async function preprocessor(
+  event: {
+    kind: 'http',
+    body: { // assuming the body contains name and age parameters
+      name: string,
+      age: number,
+    },
+    raw_string: string | null,
+    route: string;
+    path: string;
+    method: string;
+    params: Record<string, string>;
+    query: Record<string, string>;
+    headers: Record<string, string>;
+  }
+) {
+  if (event.kind === 'http') {
+    const { name, age } = event.body;
+    return {
+      user_id: event.params.id,
+      name,
+      age,
+    };
+  }
+
+  throw new Error(`Expected trigger of kind 'http', but received: ${event.kind}`);
+}
+
+export async function main(user_id: string, name: string, age: number) {
+  // Do something
+}
+```
+---
+
+## Generate routes from an OpenAPI specification
+
+Windmill can generate HTTP routes directly from an OpenAPI 2.0+ specification in JSON or YAML format.
+
+You can provide the specification in one of three ways:
+- Paste raw content
+- Upload a file
+- Provide a public URL
+
+### To generate routes
+
+- Navigate to the **Custom HTTP routes** page.
+- Click the **From OpenAPI spec** button.
+- Pick a folder for the generated routes.
+- Choose your input method and provide the OpenAPI spec.
+- Click **Generate HTTP routes**.
+
+### Behavior and limitations
+
+- If a path object has a `summary` field, it will be used as suffix for the trigger path.
+  - If the `summary` exceeds 255 characters, it will be **automatically truncated** to fit the maximum allowed length.
+- If no `summary` is defined, Windmill generates a unique route path automatically.
+- Generated routes **do not include a script or flow binding** (`script_path`) by default.
+  - This means requests to the route will return an error until a runnable is attached.
+- You can:
+  - **Save routes immediately without modifying them**.
+  - **Edit any route before or after saving**, to assign a runnable, change route path, etc.
+- External `$ref` references (e.g., referencing outside the spec) are **not supported**.
+  - You must resolve them beforehand.
+  - Only internal references (e.g., `#/components/...`) are supported.
+
+---
+
+## Generate an OpenAPI specification from HTTP routes and webhooks
+
+Windmill supports generating a compliant OpenAPI 3.1 specification from your existing HTTP routes and webhook triggers.
+
+### How it works
+
+You can export a unified OpenAPI specification that includes:
+
+- HTTP routes and webhook triggers (filtered by path or type)
+- Route metadata: `summary`, `description`, async/sync behavior
+- Security models for supported authentication types
+- Parameter inference (e.g., `:id` becomes an OpenAPI `path` parameter)
+- Auto-generated `servers`, `components`, and reusable definitions
+
+### To generate a spec
+
+1. Go to **Custom HTTP routes**
+2. Click **To OpenAPI spec**
+3. (Optional) Provide API metadata:
+   - **Title** and **version** (default to `"Windmill API"` and `"1.0.0"` if omitted)
+   - **Description**, **contact info**, and **license** are also supported
+4. Add **filters** to include specific routes or webhooks:
+   - HTTP Routes: by folder, path, and route pattern
+   - Webhooks: by kind (`script` or `flow`) and path
+5. Choose output format: **YAML** or **JSON**
+6. Click **Generate OpenAPI document**
+
+You can then:
+- Preview and copy the document
+- Download it
+- Copy a ready-made `cURL` command to call the generation API
+
+### Security mapping
+
+The OpenAPI document reflects security as follows:
+
+- **HTTP Routes**:
+  - ✅ `Windmill Auth` → JWT bearer scheme (`bearerFormat: JWT`)
+  - ✅ `Basic Auth` → HTTP Basic auth scheme
+  - ✅ `API Key` → API key in header (with exact header name)
+  - ❌ Other methods (e.g., Custom Script, Signature Auth) will not be included in the `security` field
+
+- **Webhooks**:
+  - Always mapped to `JWT bearer` authentication (`bearerFormat: JWT`)
+
+All defined security schemes are included under `components.securitySchemes`.
+
+
+### Additional behavior
+
+- For **HTTP routes**, any route segments like `:user_id` are automatically converted to OpenAPI `path` parameters
+- For **webhooks**, both **asynchronous** and **synchronous** endpoint variants are included in the spec
+- Metadata such as `summary` and `description` is included when available
+- Standardized `requestBodies` and `responses` are defined in the `components` section
+---
+
+## Authentication options
+
+Windmill supports several ways to secure HTTP triggers:
+
+| Method           | Description                                                                                  |
+|------------------|----------------------------------------------------------------------------------------------|
+| **None**         | Open to anyone (use only in trusted environments)                                            |
+| **Windmill Auth**| Uses a Windmill-signed JWT token to ensure the requesting agent has read access to both the runnable and the trigger. The token must be provided either in the Authorization header as Bearer `<token>`, or via a cookie named `token`. You can generate this token from your user settings. |
+| **API Key**      | Checks a header (e.g., `x-api-key`) for a valid key stored as a resource                     |
+| **Basic Auth**   | Uses HTTP Basic Authentication via a configured resource                                     |
+| **Signature Auth** | Verifies a signature using HMAC or third-party formats (Stripe, GitHub, etc.)               |
+
+---
+
+### Signature Auth (HMAC-based)
+
+Use **Signature Auth** to validate incoming HTTP requests using HMAC-style signatures.
+
+- Choose a preset (e.g., Stripe, GitHub) or configure a generic HMAC check.
+- If your provider uses custom logic not covered by presets, you can write a **Custom Script** instead.
+
+---
+
+## Body processing options
+
+Depending on your setup, additional arguments can be injected into your runnable:
+
+| Option           | Argument Provided     | Description                                                                                          |
+|------------------|------------------------|------------------------------------------------------------------------------------------------------|
+| **Wrap body**    | `body`                 | If enabled, Windmill will wrap the incoming request body inside an object under the `body` key. Useful when the payload structure is dynamic or unknown. |
+| **Raw body**   | `raw_string`           | The raw (unprocessed) request body is provided as a `raw_string` argument (type: `string`). Useful for signature verification, binary payloads, etc. |
+
+### Example using `body`
+```ts
+export async function main(body: unknown) {
+  console.log("Received body:", body);
+  return body;
+}
+```
+
+### Example using `raw_string`
+```ts
+export async function main(raw_string: string) {
+  console.log("Raw body received:", raw_string);
+  return JSON.parse(raw_string);
+}
+```
+
+---
+
+## Serving static files or websites
+
+HTTP routes can also serve:
+
+- **Static files**: Pick a file from S3.
+- **Static websites**: Choose an S3 folder.
+
+Windmill will host them under your custom path, using `index.html` as a fallback if necessary.
+
+---
+
+## Best practices
+
+- Use **preprocessors** to parse, validate, or transform payloads before the `main()` function.
+- Prefer **Signature Auth** for third-party integrations that support webhook signing (e.g., Stripe, GitHub).
+- Use **Custom Script** authentication only when predefined options are not flexible enough.
+- Enable **raw_string** if you need access to the raw body for signature verification or special payloads.
+
+---
+
+## Troubleshooting
+
+- If the script isn't triggered:
+  - Check that the HTTP method matches (e.g., POST vs GET).
+  - Verify authentication is correctly set.
+  - Ensure any custom scripts throw errors to help debug failures.
+
+- For signature validation failures:
+  - Double-check the secret key and signature header.
+  - Ensure `raw_body` is enabled if validation depends on the raw body.
+
+---
+
+## Custom script authentication (Advanced)
+
+Use a **Custom Script** for full control over authentication and validation when built-in methods are not enough.  
+This gives access to:
+
+- Raw payload
+- Headers, query, and route parameters
+- Secrets stored as [variables](https://docs.windmill.dev/docs/core_concepts/variables_and_secrets)
+
+Example script for HMAC signature validation:
+```ts
+const SECRET_KEY_VARIABLE_PATH = "u/admin/well_backlit_variable";
+
+export async function preprocessor(
+  event: {
+    kind: 'http';
+    body: any;
+    raw_string: string | null;
+    route: string;
+    path: string;
+    method: string;
+    params: Record<string, string>;
+    query: Record<string, string>;
+    headers: Record<string, string>;
+  },
+) {
+  if (event.kind !== 'http') {
+    throw new Error('Expected a http event');
+  }
+
+  if (!event.raw_string) {
+    throw new Error('Missing raw_string in event');
+  }
+
+  const signature = event.headers['x-signature'] || event.headers['signature'];
+  if (!signature) {
+    throw new Error('Missing signature in request headers.');
+  }
+
+  const timestamp = event.headers['x-timestamp'] || event.headers['timestamp'];
+  if (timestamp) {
+    const timestampValue = parseInt(timestamp, 10);
+    const currentTime = Math.floor(Date.now() / 1000);
+    const TIME_WINDOW_SECONDS = 5 * 60;
+
+    if (isNaN(timestampValue)) {
+      throw new Error('Invalid timestamp format.');
+    }
+
+    if (Math.abs(currentTime - timestampValue) > TIME_WINDOW_SECONDS) {
+      throw new Error('Request timestamp is outside the acceptable window.');
+    }
+  }
+
+  const isValid = await verifySignature(signature, event.raw_string, timestamp);
+  if (!isValid) {
+    throw new Error('Invalid signature.');
+  }
+
+  return JSON.parse(event.raw_string);
+}
+
+async function verifySignature(signature: string, body: string, timestamp?: string): Promise<boolean> {
+  const dataToVerify = timestamp ? `${body}${timestamp}` : body;
+  const secretKey = await wmill.getVariable(SECRET_KEY_VARIABLE_PATH);
+  const expectedSignature = crypto
+    .createHmac('sha256', secretKey)
+    .update(dataToVerify)
+    .digest('hex');
+
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    );
+  } catch (error) {
+    console.error('Signature comparison error:', error);
+    return false;
+  }
+}
+```
+> ℹ️ When using **Custom Script**, the `raw_body` option is automatically enabled.
+
+## Error handling
+
+HTTP routes support local error handlers that override workspace error handlers for specific routes. See the [error handling documentation](../10_error_handling/index.mdx#trigger-error-handlers) for configuration details and examples.

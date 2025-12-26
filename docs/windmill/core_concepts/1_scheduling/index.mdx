@@ -1,0 +1,378 @@
+import DocCard from '@site/src/components/DocCard';
+
+# Schedules
+
+Windmill provides the same set of features as CRON, but with a user interface and control panels. It allows you to define Schedules for Scripts and Flows. Once a schedule is defined, the script will automatically run at the set frequency. Think of it as an easy-to-use scheduler similar to CRON that you can share with other users.
+
+A Schedule consists of a Script or Flow, its arguments, a CRON expression that controls the execution frequency and optional Error and Recovery Handlers to deal with failed scheduled executions.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	autoPlay
+	controls
+	id="main-video"
+	src="/videos/schedule-cron-menu.mp4"
+/>
+
+<br />
+
+Cron is a powerful and versatile tool that enables users to automate tasks by scheduling them to run at specific intervals or times. From automating routine system maintenance to sending periodic email reports, cron plays an indispensable role in streamlining processes and improving productivity for developers, system administrators, and even casual users.
+
+However, as with any powerful tool, using outside Windmill cron comes with its own set of challenges and potential issues. Common problems associated with the use of cron include:
+
+- **Runs History**: to maintain a record of script runs and log outputs through cron, you must manually incorporate that logic.
+- **Error handling**: in the event of a failed run, self-crafted logic is required for notifications (Slack, emails).
+- **Manual Runs**: executing a cron job manually, outside of its schedule, proves difficult and can lead to inconsistencies due to potential environment differences.
+- **No UI**: navigating cron jobs is challenging without a centralized hub, particularly for larger engineering teams. This comes with induced issues: 1. **Handling permissions and Errors** among users and editors and 2. **Server downtime**: when the server hosting the job experiences downtime, monitoring and alerting is problematic.
+
+Windmill addresses these issues with schedules that can be defined with pre-set configuration for scripts and flows.
+
+:::info A bit of Context: How Windmill Works
+
+[Windmill](../../intro.mdx) is an open-source developer platform and infra to build all internal tools through code, such as UIs and workflows based on simple scripts (TypeScript, Python, Go, PHP, Bash, C#, SQL and Rust).
+
+<br />
+
+Managing scripts, flows and apps on Windmill works at the [workspace](../16_roles_and_permissions/index.mdx#workspace)-level. Admins invite developers and operators to the workspace where are hosted workflows. The first two can write and edit flows as well as managing permissions, executions etc.
+
+<br />
+
+Cron jobs are one of many ways to [trigger workflows](../../getting_started/8_triggers/index.mdx) in Windmill (among [webhooks](../4_webhooks/index.mdx), [auto-generated UIs](../6_auto_generated_uis/index.mdx), [customized UIs][apps], [Command-line interface](../../advanced/3_cli/index.mdx), [Slackbots](/blog/handler-slack-commands) etc.)
+
+:::
+
+## Cron syntax
+
+Windmill uses [hexagons's croner expression parser](https://github.com/hexagon/croner-rust). This library supports the Unix cron syntax as well as extensions allowing for more complex scheduling.
+
+Although the syntaxes are similar, there are some notable differences:
+
+| Feature                   | Unix cron               | hexagon's `croner` library                 |
+|---------------------------|-------------------------|--------------------------------------------|
+| **Seconds Field**         | Not included            | Included as the first field (optional)     |
+| **Day of Week Index**     | Sunday = 0 through Saturday = 6 | Sunday = 0 through Saturday = 6, or SUN through SAT |
+| **Month Representation**  | Numeric and short names | Numeric, short names, and name ranges      |
+| **List and Range in Fields** | Supports lists and ranges | Supports lists, ranges, and combinations |
+| **Step Values**           | Supported (e.g., `*/2`) | Supported, including additional complex patterns like `4#2` etc. |
+
+Hexagon's croner expressions have the following additional modifiers:
+  - _?_: In croner a questionmark behaves just as *, to allow for legacy cron
+	patterns to be used.
+  - _L_: The letter 'L' can be used in the day of the month field to indicate
+    the last day of the month. When used in the day of the week field in
+    conjunction with the # character, it denotes the last specific weekday of
+    the month. For example, `5#L` represents the last Friday of the month.
+  - _#_: The # character specifies the "nth" occurrence of a particular day
+    within a month. For example, supplying `5#2` in the day of week field
+    signifies the second Friday of the month. This can be combined with ranges
+    and supports day names. For instance, MON-FRI#2 would match the Monday
+    through Friday of the second week of the month.
+  - _W_: The character 'W' is used to specify the closest weekday to a given day
+    in the day of the month field. For example, 15W will match the closest
+    weekday to the 15th of the month. If the specified day falls on a weekend
+    (Saturday or Sunday), the pattern will match the closest weekday before or
+    after that date. For instance, if the 15th is a Saturday, 15W will match the
+    14th (Friday), and if the 15th is a Sunday, it will match the 16th (Monday).
+
+| Field        | Required | Allowed values  | Allowed special characters | Remarks                                                                                                         |
+| ------------ | -------- | --------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Seconds      | Optional | 0-59            | * , - / ?                  |                                                                                                                 |
+| Minutes      | Yes      | 0-59            | * , - / ?                  |                                                                                                                 |
+| Hours        | Yes      | 0-23            | * , - / ?                  |                                                                                                                 |
+| Day of Month | Yes      | 1-31            | * , - / ? L W              |                                                                                                                 |
+| Month        | Yes      | 1-12 or JAN-DEC | * , - / ?                  |                                                                                                                 |
+| Day of Week  | Yes      | 0-7 or SUN-SAT  | * , - / ? # L              | 0 to 6 are Sunday to Saturday<br /># is used to specify nth occurrence of a weekday |
+
+Some complex examples supported by the new syntax:
+
+| Schedule String | Meaning |
+| --------------- | ------- |
+| `0 0 */3 ? * *` | Every three hours |
+| `0 0 12 * * ?`  | Every day at noon (12 PM) |
+| `0 0 12 * * MON-FRI` | Every weekday at noon (12 PM) |
+| `0 0 12 15 * ?` | Every month on the 15th at noon (12 PM) |
+| `0 0 12 15W * ?` | Every month on the closest weekday to the 15th at noon (12 PM) |
+| `0 0 12 ? * 5#3` | Every third Friday of the month at noon (12 PM) |
+| `0 0 12 ? * 5L` | Every last Friday of the month at noon (12 PM) |
+| `0 0 12 ? JAN,JUL,AUG *` | Every January, July, and August at noon (12 PM) |
+| `0 0 12 ? FEB-DEC/2 *` | Every other month from February to December at noon (12 PM) |
+| `0 0 12 1-15/2 * ?` | Every odd day from the 1st to the 15th of every month at noon (12 PM) |
+
+Anyway, the simplified builder and [Windmill AI](../22_ai_generation/index.mdx) will help you to create the cron expression.
+
+:::warning Migrating from legacy cron syntax
+New schedules created in Windmill will use the new cron syntax.
+
+If you have existing schedules using the legacy cron syntax, you can migrate them to the new syntax by following these steps:
+
+1. Go to the `Schedules` menu and select the schedule you want to edit.
+2. Toggle the `enable latest Cron syntax`
+3. Double check the preview for upcoming events and make sure it matches your expectations.
+3. Click on the `Save` button.
+
+This will update the schedule to use the new cron syntax. Note, you will not be able to revert to the legacy syntax.
+<br />
+
+![Migrate to croner](./17_migrate_to_croner.png 'Migrate to croner')
+:::
+
+## Set a schedule
+
+Scripts and flows can have unique [primary schedules](#primary-schedule) and multiple [other schedules](#other-schedules).
+
+### Primary schedule
+
+Each script and flow can have a primary schedule that can be configured from the script or flow settings.
+
+There can only be one primary schedule per script or flow.
+
+From the script [settings](../../script_editor/settings.mdx), toggle on 'Schedule enabled' and [Deploy](../0_draft_and_deploy/index.mdx) the script.
+
+![Primary schedule](./primary_schedule.png 'Primary schedule')
+
+### Other schedules
+
+From your workspace, navigate to the dedicated `Schedules` menu and select `New Schedule`. You can also do that in the Other schedules section of a script.
+
+There can be multiple other schedules per script.
+
+![Schedules menu](./6-schedules-menu.png.webp 'Schedules menu')
+
+1. Configure the schedule frequency using cron syntax, the simplified builder or a prompt with [Windmill AI](../22_ai_generation/index.mdx).
+
+2. Select a runnable ([script][scripts] or [flow][flows]) from your workspace.
+
+3. Fill in the arguments that will be used for the automation. The arguments are the ones of the given script or flow. If you want your arguments to be dynamic, you might want to use a [workflow][flows].
+
+4. Optional: Add an [Error handler](#schedule-error-handler).
+
+5. Optional: Add a [Recovery Handler](#schedule-recovery-handler).
+
+Note that modifying a script or flow that was previously scheduled will not un-schedule it and the said script or flow will run on its modified version after [deployment](../0_draft_and_deploy/index.mdx).
+
+![Schedule a task](./12-schedule-a-task.png.webp 'Schedule a task')
+
+Click the `Schedule` button and you're good to go! The schedule will be automatically 'Enabled'. Toggle it off if needed.
+
+![Scheduled task](./13-scheduled-script.png.webp 'Scheduled task')
+
+:::tip Handle Several Schedules for the Same Workflow
+
+The previous configuration can be replicated multiple times for the same workflow and therefore several schedules can work in parallel.
+
+:::
+
+If the Schedules menu allows you to control future executions of scripts and workflows, you can check all past and future runs clicking on `Runs`. This will lead you to the [Runs menu](../../core_concepts/5_monitor_past_and_future_runs/index.mdx), with a filtered view on your runnable.
+
+![Runs menu](./10-runs-menu.png.webp 'Runs menu')
+
+... where you can get details on each run:
+
+![Run details](./11-run-details.png.webp 'Run details')
+
+## Configure schedules from flow editor
+
+The same method can also be done from the [flow editor](../../getting_started/6_flows_quickstart/index.mdx).
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/schedule-cron.mp4"
+/>
+
+<br />
+
+From your workspace, pick the workflow you want to schedule.
+
+![Go to workflow](./1-from-workspace.png.webp 'Go to workflow')
+
+Go to the `Schedule` menu ...
+
+![Pick Schedule menu](./2-schedule-menu.png.webp 'Pick Schedule menu')
+
+and either schedule in [cron](https://crontab.guru) or in Basic mode that will automatically be translated in cron. Once it's done, you can see in next picture that the cron expression is now visible on the toolbar.
+
+![Basic or cron schedule](./3-basic-schedule.png.webp 'Basic or cron schedule')
+
+Fill in the inputs, toggle the Schedule Enabled option, save, and you're all set!
+
+![Save and schedule](./4-inputs-toggle.png 'Save and schedule')
+
+## Schedule app reports
+
+Send a PDF or PNG preview of any [app](../../apps/0_app_editor/index.mdx) at a given schedule.
+
+<iframe
+	style={{ aspectRatio: '16/9' }}
+	src="https://www.youtube.com/embed/4VSAZ-WTh4Y"
+	title="Scheduled App Reports Tutorial"
+	frameBorder="0"
+	allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+	allowFullScreen
+	className="border-2 rounded-lg object-cover w-full dark:border-gray-800"
+></iframe>
+
+<br />
+
+More at:
+
+<div className="grid grid-cols-2 gap-2 my-4">
+	<DocCard
+		title="Schedule app reports"
+		description="Send a PDF or PNG preview of any app at a given schedule."
+		href="/docs/apps/schedule_reports"
+		color="orange"
+	/>
+</div>
+
+## Scheduled polls
+
+A particular use case for schedules are [Trigger scripts](../../flows/10_flow_trigger.mdx).
+
+ and have it return all of the new items since the last run as scheduled polls, without resorting to external webhooks.
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Trigger scripts"
+		description="Trigger scripts are designed to pull data from an external source and return all of the new items since the last run, without resorting to external webhooks."
+		href="/docs/flows/flow_trigger"
+	/>
+</div>
+
+## Control permissions and errors
+
+### Schedule error handler
+
+From the schedule configuration, add a special script or flow to execute in case of an error.
+
+![Schedule Error handler](./14_schedule_error_handler.png.webp)
+
+For example, this can be a script that sends an error notification to [Slack](https://hub.windmill.dev/scripts/slack/1284/), [Microsoft Teams](../../integrations/teams.mdx), or [Discord](https://hub.windmill.dev/scripts/discord/1292/).
+
+You can pick the Slack or Microsoft Teams pre-set schedule error handler.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/schedule_error_handler.mp4"
+/>
+
+<br/>
+
+Schedule Error hander is an [Enterprise Edition](/pricing) feature.
+
+### Schedule recovery handler
+
+From the schedule configuration, add a special script or flow to execute in case of of recovery from Error.
+
+You can pick the Slack or Microsoft Teams pre-set schedule recovery handler.
+
+![Schedule Recovery Handler](./15_schedule_recovery_handler.png.webp)
+
+### Dynamic skip validation
+
+Schedules can use a validation script to determine whether a scheduled run should execute. The validator receives the scheduled datetime and returns a boolean indicating whether to proceed.
+
+The dynamic skip handler is useful for:
+- Skipping runs on weekends, holidays, or specific dates
+- Checking external conditions before execution (e.g., API availability, data freshness)
+- Implementing custom scheduling logic beyond standard cron expressions
+
+#### How it works
+
+1. Configure a schedule with a dynamic skip handler script
+2. Before the scheduled job executes, Windmill runs the handler script
+3. The handler receives `scheduled_for` (ISO 8601 datetime string) as a parameter
+4. If the handler returns `true`, the scheduled job executes normally
+5. If the handler returns any other value, the job is skipped (marked as success with `skipped` flag)
+6. If the handler throws an exception, normal error handling applies and the job fails
+
+#### Example handler
+
+```typescript
+export async function main(scheduled_for: string): Promise<boolean> {
+  const date = new Date(scheduled_for);
+  const dayOfWeek = date.getUTCDay();
+
+  // Skip on weekends (0 = Sunday, 6 = Saturday)
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    return false;
+  }
+
+  // Check if it's a holiday (example: checking external API)
+  const isHoliday = await checkHolidayAPI(date);
+  return !isHoliday;
+}
+```
+
+From the schedule configuration, select your validation script in the "Dynamic skip" section.
+
+![Dynamic skip configuration](./dynamic_skip.png 'Dynamic skip configuration')
+
+:::info
+
+If the validation handler script is deleted or archived after the schedule is created, the schedule will fail at runtime with a clear error message indicating the handler script was not found.
+
+:::
+
+### Be notified every time a scheduled workflow has been executed
+
+For scheduled flows, add a simple step to be notified about the execution of the scheduled flow.
+
+In this example I chose to [receive an email](https://hub.windmill.dev/scripts/gmail/1291/), but you can use other notification methods like [Slack](https://hub.windmill.dev/scripts/slack/1284/), [Microsoft Teams](../../integrations/teams.mdx), [Discord](https://hub.windmill.dev/scripts/discord/1292/) or any other other method your imagination and API calls can create.
+
+![Add an email step](./7-add-email-step.png.webp 'Add an email step')
+
+<br />
+
+Configure the email.
+
+![Configure email](./8-configure-email.png.webp 'Configure email')
+
+<br />
+
+And watch your mailbox.
+
+![Receive the email](./9-receive-email.png 'Receive the email')
+
+<br />
+
+Given how [flows][flows] work on Windmill, it means that once the previous step has been successful, the Email step will trigger.
+
+:::tip Error handler
+
+If you want to handle failure and receive another message in that case, add an [Error handler](../../flows/7_flow_error_handler.md) to your workflow that will let you know if a failure happened at any step.
+
+:::
+
+### Manage permissions from the workflow
+
+From the settings menu, change the owner to a [folder](../../core_concepts/8_groups_and_folders/index.mdx#folders) (group of people) to manage view and editing rights.
+
+![Manage permissions](./5-manage-rights.png.webp 'Manage permissions')
+
+<br />
+
+The process is very simple but it will allow you to schedule tasks with confidence and get an aggregated view on them.
+
+Not only can you build scheduled jobs [from Windmill](../../getting_started/00_how_to_use_windmill/index.mdx) but also you can import all your existing scripts - as Windmill supports TypeScript, Python, Go, PHP, Bash or SQL - [as did one of our esteemed users](/blog/stantt-case-study) for their own scheduled [jobs](../20_jobs/index.mdx).
+
+### Failure to re-schedule
+
+If a scheduled job fails to re-schedule, it will trigger a [workspace error handler](../10_error_handling/index.mdx#workspace-error-handler).
+
+## Schedule to run later
+
+From a script or flow's page (after being [deployed](../0_draft_and_deploy/index.mdx)), you can "Schedule to run later" to schedule the execution to a given time without being recurring, therefore executing only once.
+
+Go the the script or flow's page, click on the `Advanced` button, fill in the date and time, choose to "Override Worker group tag", or pick a specific [worker group tag](../9_worker_groups/index.mdx#set-tags-to-assign-specific-queues), and click on `Run`.
+
+![Schedule to run later](./16_schedule_to_run_later.png 'Schedule to run later')
+
+You can see the future runs in the [Runs menu](../../core_concepts/5_monitor_past_and_future_runs/index.mdx), with toggle 'Planned later'. You can find the created_at date when the run was scheduled on from the API [get job endpoint](https://app.windmill.dev/openapi.html#tag/job/GET/w/{workspace}/jobs_u/get/{id}) .
+
+<!-- Resources -->
+
+[flows]: ../../getting_started/6_flows_quickstart/index.mdx
+[scripts]: ../../getting_started/0_scripts_quickstart/index.mdx
+[apps]: ../../getting_started/7_apps_quickstart/index.mdx

@@ -1,0 +1,176 @@
+import DocCard from '@site/src/components/DocCard';
+
+# Auto-generated UIs
+
+Windmill automatically generates user interfaces (UIs) for scripts and flows based on their parameters.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	autoPlay
+	controls
+	id="main-video"
+	src="/videos/auto_generated_uis.mp4"
+/>
+
+<br />
+
+:::info Windmill App editor
+
+You might also be interested by Windmill's [App editor](../../getting_started/7_apps_quickstart/index.mdx), providing a comprehensive solution to customize UIs and interactions for your scripts and flows.
+
+:::
+
+By analyzing the parameters of the main function, Windmill generates an input specification for the script or flow in the [JSON Schema](../13_json_schema_and_parsing/index.mdx) format. Windmill then renders the UI for the Script or Flow from that specification.
+
+You don't need to directly interact with the JSON Schema associated with the Script or Flow. It is the result of the analysis of the script parameters of the main function and the optional UI customization.
+
+The parsing of the main function will be used to generate an UI for scripts, or scripts used as flow steps (useful to [link steps together](../../flows/16_architecture.mdx)).
+The auto-generated UI of a flow is made from [Flow Input](../../flows/3_editor_components.mdx#flow-inputs).
+
+In the [UI customization interface](../../script_editor/customize_ui.mdx), you can refine information that couldn't be inferred directly from the parameters, such as specifying string enums or restricting lists to numbers. You can also add helpful descriptions to each field.
+
+![Customize inputs](./customize_inputs.png)
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Generated UI"
+		description="main function's arguments can be given advanced settings that will affect the inputs' auto-generated UI and JSON Schema."
+		href="/docs/script_editor/customize_ui"
+	/>
+</div>
+
+## Advanced settings
+
+Scripts' main function or flow input arguments can be given advanced settings that will affect the inputs' [auto-generated UI](../6_auto_generated_uis/index.mdx) and JSON Schema.
+
+Here is an example on how to define a [Python](../../getting_started/0_scripts_quickstart/2_python_quickstart/index.mdx) list as an enum of strings using the `Generated UI` menu.
+
+<video
+    className="border-2 rounded-xl object-cover w-full h-full dark:border-gray-800"
+    controls
+    src="/videos/advanced_parameters_enum.mp4"
+/>
+
+<br/>
+
+Each argument has the following settings:
+- **Name**: the name of the argument.
+- **Type**: the type of the argument: Integer, Number, String, Boolean, Array, Object, or Any.
+- **Description**: the description of the argument.
+- **Custom Title**: will be displayed in the UI instead of the field name.
+- **Placeholder**: will be displayed in the input field when the field is empty. If not set, the default value (directly set from the script code) will be used. The placeholder is disabled depending on the field type, format, etc.
+- **Field settings**: advanced settings depending on the type of the field.
+
+Below is the list of advanced settings for each type of field:
+
+| Type    | Advanced Configuration                                                                                                                    |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Integer | Min and Max. Currency. Currency locale.                                                                                                   |
+| Number  | Min and Max. Currency. Currency locale.                                                                                                                              |
+| String  | Min textarea rows. Disable variable picker. Is Password (will create a [variable](../2_variables_and_secrets/index.mdx) when filled). Field settings: - File (base64) &#124; Enum &#124; Format: email, hostname, uri, uuid, ipv4, yaml, sql, date-time &#124; Pattern (Regex)                 |
+| Boolean | No advanced configuration for this type.                                                                                                  |
+| Object  | Advanced settings are [Resource types](../3_resources_and_types/index.mdx).                                                 |
+| Array   | - Items are strings &#124; Items are strings from an enum &#124; Items are objects (JSON) &#124; Items are numbers &#124; Items are bytes |
+| Any     | No advanced configuration for this type.                                                                                          |
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Generated UI"
+		description="main function's arguments can be given advanced settings that will affect the inputs' auto-generated UI and JSON Schema."
+		href="/docs/script_editor/customize_ui"
+	/>
+</div>
+
+## AI form filling
+
+Windmill can automatically fill your script and flow input forms using AI to save you time and effort.
+
+You can enable that feature from your script or flow settings. You can also provide custom instructions to guide the AI on how to fill the form, making it adapt to your specific workflow needs.
+
+This feature is powered by [Windmill AI](../22_ai_generation/index.mdx), which provides comprehensive AI assistance throughout the platform.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/fill_form_inputs.mp4"
+/>
+
+<br />
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Windmill AI"
+		description="Learn more about Windmill's AI capabilities including form filling, code generation, and intelligent assistance."
+		href="/docs/core_concepts/ai_generation#fill-your-script-and-flow-run-forms"
+	/>
+</div>
+
+## Test code
+
+In Windmill Web IDE or [VS Code extension](../../cli_local_dev/1_vscode-extension/index.mdx), auto-generated UIs can be directly used in the [script](../../getting_started/0_scripts_quickstart/index.mdx) & [flow](../../getting_started/6_flows_quickstart/index.mdx) editors to [test your code](../23_instant_preview/index.mdx).
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/ui_from_script_editor.mp4"
+/>
+
+<br />
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Instant preview & testing"
+		description="Windmill allows users to see and test what they are building directly from the editor, even before deployment."
+		href="/docs/core_concepts/instant_preview"
+	/>
+</div>
+
+## Build App
+
+You can generate a dedicated [app](../../apps/0_app_editor/index.mdx) to execute your script or flow.
+
+<video
+	className="border-2 rounded-lg object-cover w-full h-full dark:border-gray-800"
+	controls
+	src="/videos/cowsay_app.mp4"
+/>
+
+<br />
+
+This is the recommended way to share scripts and flows with [operators](../16_roles_and_permissions/index.mdx), with the second option being of sharing the script and [variables](../2_variables_and_secrets/index.mdx) it depends on (but operators won't be able to load variable directly from the UI/API, only use them within the scripts they have access to).
+
+The apps will be permissioned on behalf of the [admin/author](../16_roles_and_permissions/index.mdx), the user is still identified at the time of execution from the [Runs](../5_monitor_past_and_future_runs/index.mdx) and [Audit logs](../14_audit_logs/index.mdx) menus.
+
+![Script execution Runs menu](./script_exec_runs.png.webp 'View from the run menu')
+
+> View from the [Runs](../5_monitor_past_and_future_runs/index.mdx) menu.
+
+<br />
+
+At last, this is an easy way to get an app for your scripts and flows to be customized with [Styling](../../apps/4_app_configuration_settings/4_app_styling.mdx) and [Components](../../apps/4_app_configuration_settings/1_app_component_library.mdx).
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Instant preview & testing"
+		description="Windmill allows users to see and test what they are building directly from the editor, even before deployment."
+		href="/docs/core_concepts/instant_preview"
+	/>
+</div>
+
+## Types
+
+Each [type](../13_json_schema_and_parsing/index.mdx#script-parameters-to-json-schema) in Windmill has its own UI representation.
+
+You can also check [special types](../13_json_schema_and_parsing/index.mdx#special-types) that are types that are made by Windmill and have a particular behavior in the UI.
+
+## Saved inputs
+
+Each [deployed](../0_draft_and_deploy/index.mdx) script or flow can have its own saved inputs.
+
+From a deployed script or flow, fill inputs and click on the `Save Current Input` button to save the inputs.
+
+You can then reuse them by clicking on the input and then 'Use Input'. It's an easy way to quickly use recurrent inputs without having to enter pre-set settings or creating an [app](../../apps/0_app_editor/index.mdx).
+
+Each saved input can be named and 'Shared' with the users having [access](../16_roles_and_permissions/index.mdx) to the script or flow.
+
+![Saved inputs](./saved_inputs.png)

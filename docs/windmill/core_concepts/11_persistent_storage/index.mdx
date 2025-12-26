@@ -1,0 +1,130 @@
+import DocCard from '@site/src/components/DocCard';
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Persistent storage & databases
+
+Persistent storage refers to any method of storing data that remains intact and accessible even after a system is powered off, restarted, or experiences a crash.
+
+In the context of Windmill, the stakes are: **where to effectively store and manage the data manipulated by Windmill** (ETL, data ingestion and preprocessing, data migration and sync etc.) ?
+
+:::info TLDR
+
+We recommend using **data tables** to store relational data, and **ducklakes** to store massive datasets.
+Alternatively, you can connect your own database or S3 storage as a [resource](../3_resources_and_types/index.mdx).
+
+<br />
+
+This present document gives a list of trusted services to use alongside Windmill.
+
+:::
+
+<br />
+
+There are 5 kinds of persistent storage in Windmill:
+
+1. [Data tables](#data-tables) for out-of-the-box relational data storage.
+
+2. [Ducklakes](#ducklake) for data lakehouse storage.
+
+3. [Small data](#within-windmill-not-recommended) that is relevant in between script/flow execution and can be persisted on Windmill itself.
+
+4. [Object storage for large data](#large-data-s3-r2-minio-azure-blob-google-cloud-storage) such as S3.
+
+5. [Big structured SQL data](#structured-sql-data-postgres-supabase-neontech) that is critical to your services and that is stored externally on an SQL Database or Data Warehouse.
+
+6. [NoSQL and document database](#nosql--document-databases-mongodb-key-value-stores) such as MongoDB and Key-Value stores.
+
+## Data tables
+
+You can setup data tables directly within Windmill to store relational data, without needing to connect an external database.
+All details at:
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Data tables"
+		description="Near-zero setup relational database."
+		href="/docs/core_concepts/persistent_storage/data_tables"
+	/>
+</div>
+
+## Ducklake
+
+Ducklake allows you to store massive amounts of data in parquet files on S3 while querying it with natural SQL syntax.
+Windmill offers first-class Ducklake integration to store large datasets in a data lakehouse format.
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Ducklake"
+		description="Data lakehouse storage for massive datasets."
+		href="/docs/core_concepts/persistent_storage/ducklake"
+	/>
+</div>
+
+## You already have your own database
+
+If you already have your own database provided by a supported integration, you can easily connect it to Windmill.
+
+If your service provider is already part of [our list of integrations](../../integrations/0_integrations_on_windmill.mdx), just add your database as a [resource](../../core_concepts/3_resources_and_types/index.mdx).
+
+If your service provider is not already integrated with Windmill, you can create a [new resource type](../../core_concepts/3_resources_and_types/index.mdx#create-a-resource-type) to establish the connection (and if you want, [share the schema on our Hub](../../misc/1_share_on_hub/index.md)).
+
+## Within Windmill: not recommended
+
+There are however internal methods to persist data between executions of jobs.
+
+All details at:
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Within Windmill: not recommended"
+		description="Internal methods to persist data between executions of jobs."
+		href="/docs/core_concepts/persistent_storage/within_windmill"
+	/>
+</div>
+
+## Large data: S3, R2, MinIO, Azure Blob, Google Cloud Storage
+
+On heavier data objects & unstructured data storage, [Amazon S3](https://aws.amazon.com/s3/) (Simple Storage Service) and its alternatives [Cloudflare R2](https://www.cloudflare.com/developer-platform/r2/) and [MinIO](https://min.io/) as well as [Azure Blob Storage](https://azure.microsoft.com/en-us/products/storage/blobs) and [Google Cloud Storage](https://cloud.google.com/storage) are highly scalable and durable object storage services that provide secure, reliable, and cost-effective storage for a wide range of data types and use cases.
+
+Windmill comes with a [native integration with S3, Azure Blob, and Google Cloud Storage](./large_data_files.mdx), making them the recommended storage for large objects like files and binary data.
+
+![Workspace object storage Infographic](./s3_infographics.png 'Workspace object storage Infographic')
+
+All details at:
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Large data: S3, R2, MinIO, Azure Blob, Google Cloud Storage"
+		description="Windmill comes with a native integration with S3, Azure Blob, and Google Cloud Storage, making them the recommended storage for large objects like files and binary data."
+		href="/docs/core_concepts/persistent_storage/large_data_files"
+	/>
+</div>
+
+## Structured SQL data: Postgres (Supabase, Neon.tech)
+
+For Postgres databases (best for structured data storage and retrieval, where you can define schema and relationships between entities), we recommend using Supabase or Neon.tech.
+
+All details at:
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="Big structured SQL data: Postgres (Supabase, Neon.tech)"
+		description="For Postgres databases (best for structured data storage and retrieval, where you can define schema and relationships between entities), we recommend using Supabase or Neon.tech."
+		href="/docs/core_concepts/persistent_storage/structured_databases"
+	/>
+</div>
+
+## NoSQL & Document databases (Mongodb, Key-Value Stores)
+
+Key-value stores are a popular choice for managing non-structured data, providing a flexible and scalable solution for various data types and use cases. In the context of Windmill, you can use MongoDB Atlas, Redis, and Upstash to store and manipulate non-structured data effectively.
+
+All details at:
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="NoSQL & Document databases (Mongodb, Key-Value Stores)"
+		description="Key-value stores are a popular choice for managing non-structured data, providing a flexible and scalable solution for various data types and use cases."
+		href="/docs/core_concepts/persistent_storage/key_value_stores"
+	/>
+</div>

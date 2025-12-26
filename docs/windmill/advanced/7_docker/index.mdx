@@ -1,0 +1,207 @@
+import DocCard from '@site/src/components/DocCard';
+
+# Run Docker containers
+
+:::info Worker security
+
+Windmill workers in the official docker-compose have `ENABLE_UNSHARE_PID=true` enabled by default for process isolation. This protects worker credentials from being accessed by jobs. See [Security and Process Isolation](/docs/advanced/security_isolation) for details.
+
+:::
+
+## Using Windmill native docker support (recommended)
+
+Windmill has a native docker support if the `# docker` annotation is used in a bash script. It will assume a a docker socket is mounted like in the example above and will take over management of the container as soon as the script ends, assuming that the container was ran with the `$WM_JOB_ID` as name.
+Which is why you should use docker `-d` deamon mode so that the bash script terminates early.
+
+It will handle memory tracking, logs streaming and the different exit code of the container properly.
+
+The default code is as follows:
+
+```
+# docker
+# The annotation "docker" above is important, it tells windmill that after 
+# the end of the bash script, it should manage the container at id $WM_JOB_ID:
+# pipe logs, monitor memory usage, kill container if job is cancelled.
+
+msg="${1:-world}"
+
+IMAGE="alpine:latest"
+COMMAND="/bin/echo Hello $msg"
+
+# ensure that the image is up-to-date
+docker pull $IMAGE
+
+# if using the 'docker' mode, name it with $WM_JOB_ID for windmill to monitor it
+docker run --name $WM_JOB_ID -it -d $IMAGE $COMMAND
+```
+
+### Setup
+
+#### Docker compose
+
+On the docker-compose, it is enough to uncomment the volume mount of the Windmill worker
+
+```dockerfile
+      # mount the docker socket to allow to run docker containers from within the workers
+      # - /var/run/docker.sock:/var/run/docker.sock
+```
+
+#### Helm charts
+
+In the charts values of our [helm charts](https://github.com/windmill-labs/windmill-helm-charts), set `windmill.exposeHostDocker` to `true`.
+
+## Docker-in-Docker sidecar container (recommended)
+
+One possibility to use the docker daemon with k8s with containerd is to run a docker daemon in the same pod using "Docker-in-Docker" ( dind) Using the official image `docker:stable-dind`:
+
+Here an example of a a worker group setup with a dind side-container to be adapted with your needs.
+
+```
+  workerGroups:
+    ...
+    - name: "docker"
+      replicas: 2
+      securityContext:
+        privileged: true
+      resources:
+        limits:
+          memory: "256M"
+          ephemeral-storage: "8Gi"
+      volumes:
+        - emptyDir: {}
+          name: sock-dir
+        - emptyDir: {}
+          name: windmill-workspace
+      volumeMounts:
+        - mountPath: /var/run
+          name: sock-dir
+        - mountPath: /opt/windmill
+          name: windmill-workspace
+      extraContainers:
+        - args:
+            - --mtu=1450
+          image: docker:27.2.1-dind
+          imagePullPolicy: IfNotPresent
+          name: dind
+          resources:
+            limits:
+              memory: "2Gi"
+              ephemeral-storage: "8Gi"
+          securityContext:
+            privileged: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+            - mountPath: /opt/windmill
+              name: windmill-workspace
+            - mountPath: /var/run
+              name: sock-dir
+```
+
+
+
+
+### Using remote container runtimes (not recommended)
+
+This method is not recommended because it skips Windmill's native docker runtime and simpl execute as a normal bash script.
+
+### Remote docker daemon (not recommended)
+
+```bash
+#!/bin/bash
+
+set -ex
+
+# The Remote Docker daemon Address -> 100.64.2.97:8000
+# In the example, 100.64.2.97 is my pod address.
+
+DOCKER="docker -H 100.64.2.97:8000"
+$DOCKER run --rm alpine /bin/echo "Hello $msg"
+```
+
+output
+
+```log
++ DOCKER='docker -H 100.64.2.97:8000'
++ docker -H 100.64.2.97:8000 run --rm alpine /bin/echo 'Hello '
+Unable to find image 'alpine:latest' locally
+latest: Pulling from library/alpine
+7264a8db6415: Pulling fs layer
+7264a8db6415: Verifying Checksum
+7264a8db6415: Download complete
+7264a8db6415: Pull complete
+Digest: sha256:7144f7bab3d4c2648d7e59409f15ec52a18006a128c733fcff20d3a4a54ba44a
+Status: Downloaded newer image for alpine:latest
+Hello
++ exit 0
+```
+
+### As a kubernetes task (not recommended)
+
+If you use kubernetes and would like to run your docker file directly on the kubernetes host, use the following script:
+
+```
+# shellcheck shell=bash
+# Bash script that calls docker as a client to the host daemon
+# See documentation: https://www.windmill.dev/docs/advanced/docker
+msg="${1:-world}"
+
+IMAGE="docker/whalesay:latest"
+COMMAND=(sh -c "cowsay $msg")
+
+APISERVER=https://kubernetes.default.svc
+SERVICEACCOUNT=/var/run/secrets/kubernetes.io/serviceaccount
+NAMESPACE=$(cat ${SERVICEACCOUNT}/namespace)
+TOKEN=$(cat ${SERVICEACCOUNT}/token)
+CACERT=${SERVICEACCOUNT}/ca.crt
+
+KUBECONFIG_TMP_DIR="$(mktemp -d)"
+export KUBECONFIG="${KUBECONFIG_TMP_DIR}/kubeconfig"
+
+trap "rm -rfv ${KUBECONFIG_TMP_DIR}" EXIT
+
+kubectl config set-cluster local --server="${APISERVER}" --certificate-authority="${CACERT}"
+kubectl config set-credentials local --token="${TOKEN}"
+kubectl config set-context local --cluster=local --user=local --namespace="${NAMESPACE}"
+kubectl config use-context local
+
+kubectl run task -it --rm --restart=Never --image="$IMAGE" -- "${COMMAND[@]}"
+```
+
+and use the following additional privileges
+
+```yaml
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: windmill
+  name: pod-management
+rules:
+  - apiGroups: ['']
+    resources: ['pods']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['']
+    resources: ['pods/log']
+    verbs: ['get', 'list', 'watch']
+  - apiGroups: ['']
+    resources: ['pods/attach']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['']
+    resources: ['events']
+    verbs: ['get', 'list', 'watch']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-management
+  namespace: windmill
+subjects:
+  - kind: ServiceAccount
+    name: windmill-chart
+    namespace: windmill
+roleRef:
+  kind: Role
+  name: pod-management
+  apiGroup: rbac.authorization.k8s.io
+```

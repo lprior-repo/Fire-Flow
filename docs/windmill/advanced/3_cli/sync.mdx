@@ -1,0 +1,347 @@
+import DocCard from '@site/src/components/DocCard';
+
+# Sync
+
+Synchronizing folders & git repositories to a Windmill instance is made easy
+using the wmill CLI. Syncing operations are behind the `wmill sync` subcommand.
+
+The CLI supports [branch-specific items](./branch-specific-items.mdx) that allow different Git branches to have different versions of resources and variables.
+
+Having a Windmill instance synchronized to folders & git repositories allows for
+local development through the [VS Code extension](../../cli_local_dev/1_vscode-extension/index.mdx).
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="VS Code extension"
+		description="Build scripts and flows in the comfort of your VS Code editor, while leveraging Windmill UIs for test & flows edition."
+		href="/docs/cli_local_dev/vscode-extension"
+	/>
+</div>
+
+Syncing is done using `wmill sync pull` & `wmill sync push`.
+
+Syncing is a one-off operation with no state maintained. It will override any item that is within the scope: remove those that are in the target and not in the source, and it will create new items that are in source but not in target.
+It is a _dangerous_ operation, that we recommend doing on a version-controlled folder to be able to revert any undesired changes made by mistake if necessary. It will however, show you the list of changes and ask you for confirmation before applying them.
+
+To specify the scopes of files, you should modify the includes and excludes (array of path matchers) part of the `wmill.yaml` file generated with `wmill init`. We recommend looking at all the settings of the `wmill.yaml` file to understand the different options available.
+Those are the default ones:
+
+```
+defaultTs: bun
+includes:
+  - f/**
+excludes: []
+codebases: []
+skipVariables: true
+skipResources: true
+skipResourceTypes: true
+skipSecrets: true
+includeSchedules: false
+includeTriggers: false
+```
+
+See more details in [wmill.yaml](#wmillyaml).
+
+Note that here, the variables, resources, secrets, schedules, and triggers are all skipped by default. You can change that by setting the corresponding options.
+
+When pulling, the source is the remote workspace and the target is the local folder, and when pushing, the source is the local folder and the target is the remote workspace.
+
+To add a remote workspace, use `wmill workspace add`, and to switch workspace after having added multiple, use `wmill workspace switch <source_workspace_id>`. The workspaces can be on completely different instances.
+
+```bash
+wmill workspace switch <source_workspace_id>
+wmill sync pull
+wmill workspace switch <target_workspace_id>
+wmill sync push
+```
+
+It can be used for bi-directional sync using Windmill EE and [Git sync](../11_git_sync/index.mdx).
+
+### Pulling
+
+`wmill sync pull` will simply pull all files from the currently
+[selected workspace](./workspace-management.md#selected-workspace) and store
+them in the current folder. Overwrites will not prompt the user. Make sure you
+are in the correct folder or you may loose data.
+
+### Pushing
+
+`wmill sync push` will simply push all local files to the currently
+[selected workspace](./workspace-management.md#selected-workspace), creating or
+updating the remote equivalents.
+
+## Pull API
+
+The `wmill sync pull` command is used to pull remote changes and apply them locally. It synchronizes the local workspace with the remote workspace by downloading any remote changes and updating the corresponding local files.
+
+```bash
+wmill sync pull [options]
+```
+
+### Options
+
+| Option                 | Parameter     | Description                                                                                                                                                                                                          |
+| ---------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-h, --help`           | None          | Show help options.                                                                                                                                                                                                   |
+| `--yes`                | None          | Pull without needing confirmation. The command proceeds automatically without user intervention.                                                                                                                     |
+| `--plain-secrets`      | None          | Pull secrets as plain text. Secrets are downloaded without encryption or obfuscation.                                                                                                                                |
+| `--json`               | None          | Use JSON instead of YAML. The downloaded files are in JSON format instead of YAML.                                                                                                                                   |
+| `--workspace`          | `<workspace>` | Specify the target workspace. This overrides the default workspace.                                                                                                                                                  |
+| `--debug`, `--verbose` | None          | Show debug/verbose logs.                                                                                                                                                                                             |
+| `--show-diffs`         | None          | Show diff information when syncing (may show sensitive information).                                                                                                                                                 |
+| `--token`              | `<token>`     | Specify an API token. This will override any stored token.                                                                                                                                                           |
+| `--base-url`           | `<baseUrl>`   | Specify the base URL of the API. If used, `--token` and `--workspace` are required and no local remote/workspace will be used.                                                                                       |
+| `--skip-variables`     | None          | Skip syncing variables (including secrets).                                                                                                                                                                          |
+| `--skip-secrets`       | None          | Skip syncing only secret variables.                                                                                                                                                                                  |
+| `--skip-resources`     | None          | Skip syncing resources.                                                                                                                                                                                              |
+| `--include-schedules`  | None          | Include syncing schedules.                                                                                                                                                                                           |
+| `--include-users`      | None          | Include syncing users.                                                                                                                                                                                               |
+| `--include-groups`     | None          | Include syncing groups.                                                                                                                                                                                              |
+| `--include-triggers`   | None          | Include syncing triggers (HTTP routes, WebSocket, Postgres, Kafka, NATS, SQS, GCP Pub/Sub, MQTT).                                                                                                                    |
+| `--include-settings`   | None          | Include syncing workspace settings.                                                                                                                                                                                  |
+| `--include-key`        | None          | Include workspace encryption key.                                                                                                                                                                                    |
+| `--skip-branch-validation` | None      | Skip git branch validation and prompts. Useful for temporary feature branches that don't need to be added to wmill.yaml.                                                                                             |
+| `-i, --includes`       | `<patterns>`  | Comma-separated patterns to specify which files to take into account (among files compatible with Windmill). Overrides `wmill.yaml` includes. Patterns can include `*` (any string until '/') and `**` (any string). |
+| `-e, --excludes`       | `<patterns>`  | Comma-separated patterns to specify which files to NOT take into account. Overrides `wmill.yaml` excludes.                                                                                                           |
+| `--extra-includes`     | `<patterns>`  | Comma-separated patterns to specify which files to take into account (among files compatible with Windmill). Useful to still take `wmill.yaml` into account and act as a second pattern to satisfy.                  |
+
+## Push API
+
+The `wmill sync push` command is used to push local changes and apply them remotely. It synchronizes the remote workspace with the local workspace by uploading any local changes and updating the corresponding remote files.
+
+```bash
+wmill sync push [options]
+```
+
+### Options
+
+| Option                 | Parameter     | Description                                                                                                                                                                                         |
+| ---------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-h, --help`           | None          | Show help options.                                                                                                                                                                                  |
+| `--workspace`          | `<workspace>` | Specify the target workspace. This overrides the default workspace.                                                                                                                                 |
+| `--debug`, `--verbose` | None          | Show debug/verbose logs.                                                                                                                                                                            |
+| `--show-diffs`         | None          | Show diff information when syncing (may show sensitive information).                                                                                                                                |
+| `--token`              | `<token>`     | Specify an API token. This will override any stored token.                                                                                                                                          |
+| `--base-url`           | `<baseUrl>`   | Specify the base URL of the API. If used, `--token` and `--workspace` are required and no local remote/workspace will be used.                                                                      |
+| `--yes`                | None          | Push without needing confirmation.                                                                                                                                                                  |
+| `--plain-secrets`      | None          | Push secrets as plain text.                                                                                                                                                                         |
+| `--json`               | None          | Use JSON instead of YAML.                                                                                                                                                                           |
+| `--skip-variables`     | None          | Skip syncing variables (including secrets).                                                                                                                                                         |
+| `--skip-secrets`       | None          | Skip syncing only secret variables.                                                                                                                                                                 |
+| `--skip-resources`     | None          | Skip syncing resources.                                                                                                                                                                             |
+| `--include-schedules`  | None          | Include syncing schedules.                                                                                                                                                                          |
+| `--include-users`      | None          | Include syncing users.                                                                                                                                                                              |
+| `--include-groups`     | None          | Include syncing groups.                                                                                                                                                                             |
+| `--include-triggers`   | None          | Include syncing triggers (HTTP routes, WebSocket, Postgres, Kafka, NATS, SQS, GCP Pub/Sub, MQTT).                                                                                                   |
+| `--include-settings`   | None          | Include syncing workspace settings.                                                                                                                                                                 |
+| `--include-key`        | None          | Include workspace encryption key.                                                                                                                                                                   |
+| `--skip-branch-validation` | None      | Skip git branch validation and prompts. Useful for temporary feature branches that don't need to be added to wmill.yaml.                                                                            |
+| `-i, --includes`       | `<patterns>`  | Comma-separated patterns to specify which files to take into account (among files compatible with Windmill). Patterns can include `*` (any string until '/') and `**` (any string).                 |
+| `-e, --excludes`       | `<patterns>`  | Comma-separated patterns to specify which files to NOT take into account.                                                                                                                           |
+| `--extra-includes`     | `<patterns>`  | Comma-separated patterns to specify which files to take into account (among files compatible with Windmill). Useful to still take `wmill.yaml` into account and act as a second pattern to satisfy. |
+| `--message`            | `<message>`   | Include a message that will be added to all scripts/flows/apps updated during this push.                                                                                                            |
+
+## wmill.yaml
+
+Note that you can set the default TypeScript language and explicitly exclude (or include) specific files or folders to be taken into account with a [`wmill.yaml` file](https://github.com/windmill-labs/windmill-sync-example/blob/main/wmill.yaml).
+
+### Basic configuration
+
+```yaml
+defaultTs: bun  # TypeScript runtime: 'bun' or 'deno'
+
+# File path filtering
+includes:
+  - f/**  # Include patterns (glob format)   [Use - "**" to include everything]
+excludes: [] # Exclude patterns
+extraIncludes: [] # Additional include patterns
+
+# Codebase bundling configuration
+codebases: []
+
+# Skip flags (what to exclude from sync)
+skipVariables: false
+skipResources: false
+skipResourceTypes: false
+skipSecrets: true    # Secrets are skipped by default for security
+skipScripts: false
+skipFlows: false
+skipApps: false
+skipFolders: false
+
+# Include flags (what to explicitly include)
+includeSchedules: false
+includeTriggers: false
+includeUsers: false
+includeGroups: false
+includeSettings: false
+includeKey: false
+
+# Git branch validation
+skipBranchValidation: false  # Skip validation for feature branches
+```
+
+### Git branch-specific configuration
+
+The CLI supports branch-specific settings through the `gitBranches` configuration:
+
+```yaml
+gitBranches:
+  main:  # Branch name
+    baseUrl: 'http://localhost:8000/'  # Windmill instance URL
+    workspaceId: test  # Workspace ID
+    overrides: {}  # Override settings for this branch
+    promotionOverrides:  # Settings used when promoting TO this branch
+      skipApps: true
+      skipFlows: true
+    specificItems:  # Branch-specific resources/variables
+      resources:
+        - "u/alex/prod_*"
+      variables:
+        - "u/alex/env_*"
+
+  staging:
+    baseUrl: 'https://staging.windmill.dev/'
+    workspaceId: staging-workspace
+    overrides:
+      skipVariables: true
+      includeSettings: true
+    promotionOverrides:
+      skipSecrets: true
+
+  production:
+    baseUrl: 'https://app.windmill.dev/'
+    workspaceId: prod-workspace
+    overrides:
+      includeSettings: true
+      skipSecrets: false
+    promotionOverrides:
+      skipApps: true      # Don't sync apps during promotion
+      skipFlows: true     # Don't sync flows during promotion
+
+  # Common items that are branch-specific across all branches
+  commonSpecificItems:
+    resources:
+      - "u/alex/config/**"
+    variables:
+      - "u/alex/database_*"
+```
+
+### Configuration resolution priority
+
+Settings are resolved in this order (highest priority first):
+
+1. **CLI flags** (highest priority)
+2. **Promotion overrides** (if `--promotion` flag is used)
+3. **Branch-specific overrides** (if current branch has `overrides` defined)
+4. **Top-level settings** (base configuration)
+
+### Codebase configuration
+
+Advanced bundling configuration for TypeScript/JavaScript projects:
+
+```yaml
+codebases:
+  - relative_path: './my-lib'
+    includes: ['**/*.ts']
+    excludes: ['**/*.test.ts']
+    assets:
+      - from: 'assets/'
+        to: 'static/'
+    customBundler: 'esbuild'
+    external: ['lodash', 'react']
+    define:
+      NODE_ENV: 'production'
+    inject: ['./polyfills.js']
+```
+
+All sync options for your workspace can be found on this [file](https://github.com/windmill-labs/windmill/blob/main/cli/src/core/conf.ts#L16):
+
+```ts
+export interface SyncOptions {
+  raw?: boolean;
+  yes?: boolean;
+  skipPull?: boolean;
+  failConflicts?: boolean;
+  plainSecrets?: boolean;
+  json?: boolean;
+
+  // File filtering options
+  skipVariables?: boolean;
+  skipResources?: boolean;
+  skipResourceTypes?: boolean;
+  skipSecrets?: boolean;
+  skipScripts?: boolean;
+  skipFlows?: boolean;
+  skipApps?: boolean;
+  skipFolders?: boolean;
+
+  // Include options
+  includeSchedules?: boolean;
+  includeTriggers?: boolean;
+  includeUsers?: boolean;
+  includeGroups?: boolean;
+  includeSettings?: boolean;
+  includeKey?: boolean;
+  skipBranchValidation?: boolean;
+
+  // Path and message options
+  message?: string;
+  includes?: string[];
+  extraIncludes?: string[];
+  excludes?: string[];
+  defaultTs?: 'bun' | 'deno';
+  codebases?: Codebase[];
+
+  // Git branch configuration
+  gitBranches?: {
+    commonSpecificItems?: {
+      variables?: string[];
+      resources?: string[];
+    };
+    [branchName: string]: SyncOptions & {
+      overrides?: Partial<SyncOptions>;
+      promotionOverrides?: Partial<SyncOptions>;
+      baseUrl?: string;
+      workspaceId?: string;
+      specificItems?: {
+        variables?: string[];
+        resources?: string[];
+      };
+    }
+  };
+  promotion?: string;
+}
+```
+
+## Example repo for syncing with Windmill in git
+
+We provide an example repo for syncing with Windmill:
+
+<div className="grid grid-cols-2 gap-6 mb-4">
+	<DocCard
+		title="windmill-sync-example"
+		description="Demo repository showcasing how to sync Windmill with a remote."
+		href="https://github.com/windmill-labs/windmill-sync-example"
+	/>
+</div>
+
+## Cloning an instance
+
+Instances can be cloned with Windmill CLI. This is useful for instance migration or for setting up a new (prod) instance with the same configuration as an existing one.
+
+### Pulling an instance
+
+To pull instance users, groups, settings and configs (=worker groups+SMTP) from the instance use `wmill instance pull`.
+
+You can skip any of those using `--skip-XXX`.
+
+You can also pull all workspaces at the same time by adding the `--include-workspaces` option. It will setup for each a local workspace (including a folder in the current directory) with a prefix specific to the instance (based on the name you've given to the instance).
+
+### Pushing an instance
+
+To push to an instance use `wmill instance push`. It takes the same options as pulling an instance.
+
+When using `--include-workspaces`, you will also have to select the instance prefix of the local workspaces you want to push (make sure you're in its parent folder).
+
+During the push process, you will be prompted to decide whether to [re-encrypt](./workspace-management.md#managing-encryption-keys) the secrets of the workspace on the remote instance. In the case of instance migration, it is recommended to select "no" as the secrets are already encrypted with the correct key.
