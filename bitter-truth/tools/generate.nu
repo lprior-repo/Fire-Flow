@@ -202,9 +202,9 @@ OUTPUT ONLY THE CODE INSIDE A ```nushell CODE BLOCK:"
                 # Absolute path - check existence
                 if ($p | path exists) { $p } else { null }
             } else if ($p == "llm-cleaner") {
-                # Check if in PATH using which
-                let which_result = (which $p | complete)
-                if $which_result.exit_code == 0 { $p } else { null }
+                # Check if in PATH using which (returns table, empty if not found)
+                let which_result = (which $p)
+                if ($which_result | is-not-empty) { $p } else { null }
             } else {
                 # Relative path - check existence
                 if ($p | path exists) { $p } else { null }
