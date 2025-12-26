@@ -113,8 +113,8 @@ Thumbs.db
 *.iws
 *.ipr
 
-# Go binaries and build artifacts
-fire-flow
+# Go binaries and build artifacts (keep fire-flow/ directory)
+/bin/fire-flow
 *.exe
 *.exe~
 *.dll
