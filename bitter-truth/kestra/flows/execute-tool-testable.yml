@@ -75,22 +75,25 @@ tasks:
       type: io.kestra.plugin.core.runner.Process
     commands:
       - |
-        nu -c '
-        let input_str = """{{ inputs.tool_input }}"""
+        # Write input to file first to avoid templating/escaping issues
+        cat > /tmp/validate-input.json << 'INPUTEOF'
+        {{ inputs.tool_input }}
+        INPUTEOF
 
+        nu -c '
         let parsed = try {
-          $input_str | from json
+          open --raw /tmp/validate-input.json | from json
           { success: true, valid: true }
-        } catch {
-          { success: false, valid: false, error: "Invalid JSON input" }
+        } catch { |err|
+          { success: false, valid: false, error: $"Invalid JSON input: ($err.msg)" }
         }
 
         if $parsed.success {
           { level: "info", msg: "Input JSON valid", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
           print { success: true, valid: true, trace_id: "{{ inputs.trace_id }}" } | to json
         } else {
-          { level: "error", msg: "Invalid input JSON", error: "{{ inputs.tool_input }}", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
-          print { success: false, error: "Invalid JSON input", trace_id: "{{ inputs.trace_id }}" } | to json
+          { level: "error", msg: "Invalid input JSON", error: $parsed.error, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+          print { success: false, error: $parsed.error, trace_id: "{{ inputs.trace_id }}" } | to json
           exit 1
         }
         '
