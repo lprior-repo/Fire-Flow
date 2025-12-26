@@ -106,7 +106,7 @@ tasks:
       type: io.kestra.plugin.core.runner.Process
     timeout: PT2M
     outputFiles:
-      - "{{  inputs.output_path }}"
+      - "{{ inputs.output_path }}"
       - "{{ inputs.logs_path }}"
     commands:
       - |

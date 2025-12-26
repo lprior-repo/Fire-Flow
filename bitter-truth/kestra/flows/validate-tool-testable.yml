@@ -31,7 +31,7 @@ inputs:
     description: Trace ID for logging
 
   - id: dry_run
-    type: BOOLEAN
+    type: BOOL
     defaults: false
     description: Skip actual validation, just check files exist
 
@@ -171,5 +171,5 @@ outputs:
 
   - id: validation_result
     type: STRING
-    value: "{{ outputs.validate.vars.validation_result }}"
+    value: "{{ outputs.validate.validation_result }}"
     description: Validation result JSON (for feedback collection)

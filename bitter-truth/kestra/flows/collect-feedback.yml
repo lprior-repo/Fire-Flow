@@ -71,5 +71,5 @@ tasks:
 outputs:
   - id: feedback
     type: STRING
-    value: "{{ outputs.collect.outputFiles['/tmp/feedback.txt'] }}"
-    description: URI to stored feedback file (in internal storage)
+    value: "{{ read(outputs.collect.outputFiles['/tmp/feedback.txt']) }}"
+    description: Feedback text for AI self-healing

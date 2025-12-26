@@ -220,6 +220,7 @@ tasks:
         type: io.kestra.plugin.core.flow.Subflow
         namespace: bitter
         flowId: validate-tool-testable
+        wait: true
         inputs:
           contract_path: "{{ inputs.contract }}"
           output_path: "{{ render(vars.work_dir) }}/output.json"
@@ -245,14 +246,14 @@ tasks:
         inputs:
           output_file: "{{ render(vars.work_dir) }}/output.json"
           logs_file: "{{ render(vars.work_dir) }}/logs.json"
-          validation_errors: "{{ outputs.validate_step.validation_result }}"
+          validation_errors: "{{ outputs.validate_step.outputs.validation_result }}"
           attempt_number: "{{ taskrun.value }}/{{ inputs.max_attempts }}"
 
       # 6. UPDATE: Store feedback
       - id: update_feedback
         type: io.kestra.plugin.core.execution.SetVariables
         variables:
-          feedback: "{{ outputs.feedback_step.feedback }}"
+          feedback: "{{ outputs.feedback_step.outputs.feedback }}"
           attempt_count: "{{ taskrun.value }}"
 
       - id: log_attempt_end
