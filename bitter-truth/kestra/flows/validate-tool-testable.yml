@@ -47,14 +47,14 @@ tasks:
         nu -c '
         let contract_path = "{{ inputs.contract_path }}"
         let output_path = "{{ inputs.output_path }}"
-        let errors = []
+        mut errors = []
 
         if not ($contract_path | path exists) {
-          $errors += ["Contract file not found: " + $contract_path]
+          $errors = ($errors | append $"Contract file not found: ($contract_path)")
         }
 
         if not ($output_path | path exists) {
-          $errors += ["Output file not found: " + $output_path]
+          $errors = ($errors | append $"Output file not found: ($output_path)")
         }
 
         if ($errors | length) > 0 {

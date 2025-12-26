@@ -4,7 +4,7 @@
 ## 🔥 KESTRA API - HOW TO CALL IT (OSS Edition)
 ## ═══════════════════════════════════════════════════════════════════════════════
 
-**BASE URL**: `http://localhost:4200`
+**BASE URL**: `http://localhost:4201`
 **TENANT**: `main` (OSS always uses `main` as tenant)
 **AUTH**: Basic Auth via `~/.netrc` or `-u user:pass`
 
@@ -45,19 +45,19 @@ echo "machine localhost
 chmod 600 ~/.netrc
 
 # Search flows in 'bitter' namespace
-curl --netrc 'http://localhost:4200/api/v1/main/flows/search?namespace=bitter'
+curl --netrc 'http://localhost:4201/api/v1/main/flows/search?namespace=bitter'
 
 # Deploy a flow
 curl -X PUT --netrc -H "Content-Type: application/x-yaml" \
   --data-binary '@flow.yml' \
-  'http://localhost:4200/api/v1/main/flows/bitter/contract-loop'
+  'http://localhost:4201/api/v1/main/flows/bitter/contract-loop'
 
 # Trigger execution
 curl -X POST --netrc \
   -F contract="/path/to/contract.yaml" \
   -F task="Create echo tool" \
   -F input_json="{}" \
-  'http://localhost:4200/api/v1/main/executions/bitter/contract-loop'
+  'http://localhost:4201/api/v1/main/executions/bitter/contract-loop'
 ```
 
 ### 📚 Reference
@@ -100,16 +100,16 @@ def kestra-api [endpoint: string, --method: string = "GET", --data: string = ""]
     let base64_auth = ($auth | encode base64)
 
     if $data == "" {
-        http get -H ["Authorization" $"Basic ($base64_auth)"] $"http://localhost:4200($endpoint)"
+        http get -H ["Authorization" $"Basic ($base64_auth)"] $"http://localhost:4201($endpoint)"
     } else {
-        http post -H ["Authorization" $"Basic ($base64_auth)" "Content-Type" "application/json"] $"http://localhost:4200($endpoint)" $data
+        http post -H ["Authorization" $"Basic ($base64_auth)" "Content-Type" "application/json"] $"http://localhost:4201($endpoint)" $data
     }
 }
 ```
 
 ## Kestra Configuration
 
-- **URL**: http://localhost:4200
+- **URL**: http://localhost:4201
 - **Namespace**: `bitter`
 - **Main Flow**: `contract-loop`
 - **Credentials**: Stored in `pass` at:
@@ -147,7 +147,7 @@ Generate -> Gate -> Pass or Self-Heal -> Escalate after N failures
 - `nu` (Nushell) - script execution
 - `opencode` - AI code generation
 - `datacontract` - contract validation
-- Kestra (running on :4200) - orchestration
+- Kestra (running on :4201) - orchestration
 
 ### Running the Flow
 
@@ -167,7 +167,7 @@ kestra-api "/api/v1/executions/bitter/contract-loop" --method POST --data '{
 
 ## Monitoring
 
-- Kestra UI: http://localhost:4200
+- Kestra UI: http://localhost:4201
 - Execution logs visible in task outputs
 - All tools log structured JSON to stderr
 - Use `tools/kestra-ws` Rust CLI for AI-friendly log streaming
