@@ -249,3 +249,6 @@ wp-content/plugins/
 wp-content/themes/
 wp-config.php
 wp-config-local.php
+
+# bv (beads viewer) local config and caches
+.bv/

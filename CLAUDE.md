@@ -8,6 +8,10 @@
 **TENANT**: `main` (OSS always uses `main` as tenant)
 **AUTH**: Basic Auth via `~/.netrc` or `-u user:pass`
 
+Check docs and Mem0 and Beads for more info please
+
+
+
 ### 🎯 CORE ENDPOINTS
 
 ```bash
