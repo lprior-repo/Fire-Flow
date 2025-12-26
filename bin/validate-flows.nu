@@ -3,7 +3,7 @@
 # Usage: nu bin/validate-flows.nu
 
 def main [] {
-  let kestra_jar = "/home/lewis/kestra/kestra.jar"
+  let kestra_plugins = "/home/lewis/kestra/plugins"
   let flows_dir = "bitter-truth/kestra/flows"
 
   print "🔍 Validating Kestra flows in ($flows_dir)..."
@@ -17,7 +17,7 @@ def main [] {
     print -n $"  [($results | length | $in + 1)] ($flowname) ... "
 
     let validation = (
-      ^java -jar $kestra_jar flow validate -p /home/lewis/kestra/plugins --local $flow
+      ^kestra flow validate -p $kestra_plugins --local $flow
       | complete
     )
 

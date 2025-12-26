@@ -4,7 +4,8 @@
 
 set -e
 
-KESTRA_JAR="/home/lewis/kestra/kestra.jar"
+KESTRA_BIN="kestra"
+KESTRA_PLUGINS="/home/lewis/kestra/plugins"
 FLOWS_DIR="bitter-truth/kestra/flows"
 
 echo "🔍 Validating Kestra flows in $FLOWS_DIR..."
@@ -19,13 +20,13 @@ for flow in "$FLOWS_DIR"/*.yml; do
 
   echo -n "  [$total] $flowname ... "
 
-  if java -jar "$KESTRA_JAR" flow validate -p /home/lewis/kestra/plugins --local "$flow" > /dev/null 2>&1; then
+  if $KESTRA_BIN flow validate -p "$KESTRA_PLUGINS" --local "$flow" > /dev/null 2>&1; then
     echo "✅ valid"
   else
     echo "❌ FAILED"
     echo ""
     echo "    Error details:"
-    java -jar "$KESTRA_JAR" flow validate -p /home/lewis/kestra/plugins --local "$flow" 2>&1 | sed 's/^/    /'
+    $KESTRA_BIN flow validate -p "$KESTRA_PLUGINS" --local "$flow" 2>&1 | sed 's/^/    /'
     echo ""
     failed=$((failed + 1))
   fi
