@@ -99,10 +99,11 @@ tasks:
       type: io.kestra.plugin.core.runner.Process
     timeout: PT10M
     env:
+      XDG_CONFIG_HOME: /home/lewis/.config
       XDG_DATA_HOME: /tmp/opencode-data
       XDG_CACHE_HOME: /tmp/opencode-cache
       XDG_STATE_HOME: /tmp/opencode-state
-      MODEL: local/qwen3-coder
+      MODEL: opencode/glm-4.7-free
     commands:
       - |
         nu -c '
@@ -126,8 +127,8 @@ tasks:
         } | complete
 
         if $result.exit_code != 0 {
-          { level: "error", msg: "Code generation failed", exit_code: $result.exit_code, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
-          print { success: false, error: "Code generation failed", trace_id: "{{ inputs.trace_id }}" } | to json
+          { level: "error", msg: "Code generation failed", exit_code: $result.exit_code, stderr: $result.stderr, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
+          print { success: false, error: $"Code generation failed: ($result.stderr)", trace_id: "{{ inputs.trace_id }}" } | to json
           exit 1
         } else {
           let response = $result.stdout | from json

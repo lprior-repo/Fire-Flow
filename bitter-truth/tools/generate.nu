@@ -121,7 +121,7 @@ OUTPUT ONLY THE CODE INSIDE A ```nushell CODE BLOCK:"
 
     # Validate model exists - list available models and check
     { level: "debug", msg: "validating model availability" } | to json -r | print -e
-    let models_check = (^opencode models list | complete)
+    let models_check = (^opencode models | complete)
     if $models_check.exit_code != 0 {
         let dur = (date now) - $start | into int | $in / 1000000
         { level: "error", msg: "failed to list models", stderr: $models_check.stderr } | to json -r | print -e

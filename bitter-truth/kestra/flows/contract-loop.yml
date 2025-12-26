@@ -60,11 +60,16 @@ inputs:
 
 variables:
   feedback: "Initial generation"
-  trace_id: "{{ execution.id }}"
-  work_dir: "/tmp/kestra/{{ execution.id }}"
   attempt_count: "0"
 
 tasks:
+  # SET VARIABLES (execution.id not available in variables section)
+  - id: set_vars
+    type: io.kestra.plugin.core.execution.SetVariables
+    variables:
+      trace_id: "{{ execution.id }}"
+      work_dir: "/tmp/kestra/{{ execution.id }}"
+
   # INITIALIZATION
   - id: init
     type: io.kestra.plugin.core.log.Log
@@ -157,6 +162,7 @@ tasks:
         type: io.kestra.plugin.core.flow.Subflow
         namespace: bitter
         flowId: generate-tool-testable
+        allowFailure: true
         inputs:
           contract_path: "{{ inputs.contract }}"
           task: "{{ inputs.task }}"
@@ -199,6 +205,7 @@ tasks:
         type: io.kestra.plugin.core.flow.Subflow
         namespace: bitter
         flowId: execute-tool-testable
+        allowFailure: true
         inputs:
           tool_path: "{{ vars.work_dir }}/tool.nu"
           tool_input: "{{ inputs.input_json }}"
@@ -213,6 +220,7 @@ tasks:
         type: io.kestra.plugin.core.flow.Subflow
         namespace: bitter
         flowId: validate-tool-testable
+        allowFailure: true
         inputs:
           contract_path: "{{ inputs.contract }}"
           output_path: "{{ vars.work_dir }}/output.json"
