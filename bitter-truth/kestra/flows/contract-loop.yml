@@ -100,10 +100,6 @@ tasks:
         }
         print "✓ Contract exists"
         '
-    onFailure:
-      - id: fail_no_contract
-        type: io.kestra.plugin.core.execution.Exit
-        state: FAILED
 
   # VALIDATE TIMEOUT HIERARCHY (P1-2)
   - id: validate_timeouts
@@ -128,10 +124,6 @@ tasks:
 
         print $"✓ Timeout hierarchy valid: workflow=($workflow)s >= needed=($minimum)s"
         '
-    onFailure:
-      - id: fail_timeout_invalid
-        type: io.kestra.plugin.core.execution.Exit
-        state: FAILED
 
   # RETRY LOOP
   # CRITICAL: concurrencyLimit=1 ensures sequential attempts (not parallel)
@@ -174,11 +166,6 @@ tasks:
           timeout_seconds: "{{ inputs.generate_timeout_seconds }}"
           trace_id: "{{ vars.trace_id }}"
           tools_dir: "{{ inputs.tools_dir }}"
-        onFailure:
-          - id: log_generate_error
-            type: io.kestra.plugin.core.log.Log
-            level: ERROR
-            message: "Generation failed: {{ taskrun.stderr }}"
 
       # TOOL DEDUPLICATION: Cache by hash (Jevons Paradox - prevent duplicates)
       - id: deduplicate_tool
@@ -220,11 +207,6 @@ tasks:
           trace_id: "{{ vars.trace_id }}"
           tools_dir: "{{ inputs.tools_dir }}"
           timeout_seconds: "{{ inputs.execute_timeout_seconds }}"
-        onFailure:
-          - id: log_execute_error
-            type: io.kestra.plugin.core.log.Log
-            level: ERROR
-            message: "Execution failed: {{ taskrun.stderr }}"
 
       # 3. VALIDATE: Contract validation
       - id: validate_step
@@ -264,11 +246,6 @@ tasks:
           logs_file: "{{ vars.work_dir }}/logs.json"
           validation_errors: "{{ outputs.validate_step.validation_result }}"
           attempt_number: "{{ taskrun.value }}/{{ inputs.max_attempts }}"
-        onFailure:
-          - id: log_feedback_error
-            type: io.kestra.plugin.core.log.Log
-            level: WARN
-            message: "Feedback collection failed, using previous feedback"
 
       # 6. UPDATE: Store feedback
       - id: update_feedback

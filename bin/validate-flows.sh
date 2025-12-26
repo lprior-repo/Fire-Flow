@@ -19,13 +19,13 @@ for flow in "$FLOWS_DIR"/*.yml; do
 
   echo -n "  [$total] $flowname ... "
 
-  if java -jar "$KESTRA_JAR" flow validate "$flow" > /dev/null 2>&1; then
+  if java -jar "$KESTRA_JAR" flow validate -p /home/lewis/kestra/plugins --local "$flow" > /dev/null 2>&1; then
     echo "✅ valid"
   else
     echo "❌ FAILED"
     echo ""
     echo "    Error details:"
-    java -jar "$KESTRA_JAR" flow validate "$flow" 2>&1 | sed 's/^/    /'
+    java -jar "$KESTRA_JAR" flow validate -p /home/lewis/kestra/plugins --local "$flow" 2>&1 | sed 's/^/    /'
     echo ""
     failed=$((failed + 1))
   fi

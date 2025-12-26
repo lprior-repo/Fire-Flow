@@ -66,11 +66,6 @@ tasks:
         { level: "info", msg: "Tool exists", tool_path: $tool_path, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
         print { success: true, tool_exists: true, trace_id: "{{ inputs.trace_id }}" } | to json
         '
-    onFailure:
-      - id: log_tool_check_error
-        type: io.kestra.plugin.core.log.Log
-        level: ERROR
-        message: "Tool validation failed: {{ taskrun.stderr }}"
 
   # STEP 2: VALIDATE INPUT JSON
   - id: validate_input
@@ -99,11 +94,6 @@ tasks:
           exit 1
         }
         '
-    onFailure:
-      - id: log_input_validation_error
-        type: io.kestra.plugin.core.log.Log
-        level: ERROR
-        message: "Input validation failed"
 
   # STEP 3: EXECUTE TOOL
   - id: execute
@@ -112,7 +102,6 @@ tasks:
     taskRunner:
       type: io.kestra.plugin.core.runner.Process
     timeout: PT2M
-    store: true  # ← CRITICAL: Store output files, not in execution context
     outputFiles:
       - "{{  inputs.output_path }}"
       - "{{ inputs.logs_path }}"

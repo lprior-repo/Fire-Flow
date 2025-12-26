@@ -90,11 +90,6 @@ tasks:
           exit 0
         }
         '
-    onFailure:
-      - id: log_validation_error
-        type: io.kestra.plugin.core.log.Log
-        level: ERROR
-        message: "Input validation failed: {{ taskrun.stderr }}"
 
   # STEP 2: GENERATE
   - id: generate_code

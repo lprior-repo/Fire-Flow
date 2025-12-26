@@ -67,11 +67,6 @@ tasks:
         { level: "info", msg: "Validation inputs valid", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
         print { success: true, inputs_valid: true, trace_id: "{{ inputs.trace_id }}" } | to json
         '
-    onFailure:
-      - id: log_input_error
-        type: io.kestra.plugin.core.log.Log
-        level: ERROR
-        message: "Validation input check failed: {{ taskrun.stderr }}"
 
   # STEP 2: VALIDATE OUTPUT JSON
   - id: validate_output_format
@@ -107,7 +102,6 @@ tasks:
     description: Validate via DataContract + validate.nu
     taskRunner:
       type: io.kestra.plugin.core.runner.Process
-    store: true  # ← CRITICAL: Store validation result, not in execution context
     outputFiles:
       - "/tmp/validation-result.json"
     env:

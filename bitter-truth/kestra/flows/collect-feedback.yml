@@ -37,7 +37,6 @@ tasks:
     description: Build feedback message for AI retry
     taskRunner:
       type: io.kestra.plugin.core.runner.Process
-    store: true  # ← Store feedback file, not in execution context
     outputFiles:
       - "/tmp/feedback.txt"
     commands:
