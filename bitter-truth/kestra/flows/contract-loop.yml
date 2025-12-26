@@ -37,10 +37,26 @@ inputs:
     defaults: "./bitter-truth/tools"
     description: Directory containing bitter-truth tools
 
-  - id: timeout_seconds
+  # TIMEOUT HIERARCHY (P1-2)
+  - id: workflow_timeout_seconds
+    type: INT
+    defaults: 3600
+    description: Maximum workflow duration (1 hour default)
+
+  - id: generate_timeout_seconds
+    type: INT
+    defaults: 900
+    description: Timeout for AI generation (15 min default)
+
+  - id: execute_timeout_seconds
     type: INT
     defaults: 300
-    description: Timeout for AI generation
+    description: Timeout for tool execution (5 min default)
+
+  - id: validate_timeout_seconds
+    type: INT
+    defaults: 60
+    description: Timeout for validation (1 min default)
 
 variables:
   feedback: "Initial generation"
@@ -89,6 +105,34 @@ tasks:
         type: io.kestra.plugin.core.execution.Exit
         state: FAILED
 
+  # VALIDATE TIMEOUT HIERARCHY (P1-2)
+  - id: validate_timeouts
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Ensure workflow timeout exceeds sum of child timeouts
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - |
+        nu -c '
+        let workflow = {{ inputs.workflow_timeout_seconds }}
+        let per_attempt = {{ inputs.generate_timeout_seconds }} + {{ inputs.execute_timeout_seconds }} + {{ inputs.validate_timeout_seconds }}
+        let total_needed = $per_attempt * {{ inputs.max_attempts }}
+        let buffer = ($total_needed * 0.1) | math round  # 10% buffer
+        let minimum = $total_needed + $buffer
+
+        if $workflow < $minimum {
+          print $"ERROR: workflow_timeout \(($workflow)s\) < needed \(($minimum)s = ($total_needed)s + ($buffer)s buffer\)"
+          print $"Increase workflow_timeout_seconds to at least ($minimum)"
+          exit 1
+        }
+
+        print $"✓ Timeout hierarchy valid: workflow=($workflow)s >= needed=($minimum)s"
+        '
+    onFailure:
+      - id: fail_timeout_invalid
+        type: io.kestra.plugin.core.execution.Exit
+        state: FAILED
+
   # RETRY LOOP
   - id: attempt_loop
     type: io.kestra.plugin.core.flow.ForEach
@@ -99,6 +143,19 @@ tasks:
         type: io.kestra.plugin.core.log.Log
         level: INFO
         message: "→ Attempt {{ taskrun.value }}/{{ inputs.max_attempts }} (Trace: {{ vars.trace_id }})"
+
+      # EXPONENTIAL BACKOFF: Wait before retry (P1-1)
+      - id: wait_before_retry
+        type: io.kestra.plugin.core.flow.If
+        condition: "{{ taskrun.value > 1 }}"  # Skip on first attempt
+        then:
+          - id: backoff_delay
+            type: io.kestra.plugin.core.flow.Sleep
+            duration: "PT{{ 2 ** (taskrun.value - 2) }}S"  # 1s, 2s, 4s, 8s, 16s
+          - id: log_backoff
+            type: io.kestra.plugin.core.log.Log
+            level: INFO
+            message: "Waited {{ 2 ** (taskrun.value - 2) }}s before retry (exponential backoff)"
 
       # 1. GENERATE: AI generates Nushell from contract + feedback
       - id: generate_step
@@ -111,7 +168,7 @@ tasks:
           feedback: "{{ vars.feedback }}"
           attempt: "{{ taskrun.value }}/{{ inputs.max_attempts }}"
           output_path: "{{ vars.work_dir }}/tool.nu"
-          timeout_seconds: "{{ inputs.timeout_seconds }}"
+          timeout_seconds: "{{ inputs.generate_timeout_seconds }}"
           trace_id: "{{ vars.trace_id }}"
           tools_dir: "{{ inputs.tools_dir }}"
         onFailure:
@@ -119,6 +176,33 @@ tasks:
             type: io.kestra.plugin.core.log.Log
             level: ERROR
             message: "Generation failed: {{ taskrun.stderr }}"
+
+      # TOOL DEDUPLICATION: Cache by hash (Jevons Paradox - prevent duplicates)
+      - id: deduplicate_tool
+        type: io.kestra.plugin.scripts.shell.Commands
+        description: Cache generated tool by content hash to prevent duplicates
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
+        commands:
+          - |
+            nu -c '
+            let tool_path = "{{ vars.work_dir }}/tool.nu"
+            let tool_hash = (open $tool_path | hash sha256)
+            let cache_dir = "/var/cache/kestra/tools"
+            let cached_tool = $"($cache_dir)/($tool_hash).nu"
+
+            # Create cache directory if needed
+            mkdir -p $cache_dir
+
+            # Check if identical tool already exists
+            if ($cached_tool | path exists) {
+              print $"♻️ Reusing cached tool \(hash: ($tool_hash)\)"
+              cp $cached_tool $tool_path
+            } else {
+              print $"💾 Caching new tool \(hash: ($tool_hash)\)"
+              cp $tool_path $cached_tool
+            }
+            '
 
       # 2. EXECUTE: Run the generated tool
       - id: execute_step
@@ -132,7 +216,7 @@ tasks:
           logs_path: "{{ vars.work_dir }}/logs.json"
           trace_id: "{{ vars.trace_id }}"
           tools_dir: "{{ inputs.tools_dir }}"
-          timeout_seconds: 60
+          timeout_seconds: "{{ inputs.execute_timeout_seconds }}"
         onFailure:
           - id: log_execute_error
             type: io.kestra.plugin.core.log.Log
@@ -221,6 +305,45 @@ tasks:
       type: io.kestra.plugin.core.runner.Process
     commands:
       - rm -rf {{ vars.work_dir }}
+
+  # AUTO-CLEANUP: Delete old artifacts (Jevons Paradox - prevent accumulation)
+  - id: cleanup_old_artifacts
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Delete artifacts older than 7 days to prevent disk exhaustion
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - |
+        nu -c '
+        # Clean old execution workspaces (> 7 days)
+        if ("/tmp/kestra" | path exists) {
+          let old_workspaces = (ls /tmp/kestra -s | where modified < ((date now) - 7day) | get name)
+          if ($old_workspaces | length) > 0 {
+            $old_workspaces | each { |dir| rm -rf $dir }
+            print $"🗑️ Cleaned ($old_workspaces | length) old workspaces"
+          }
+        }
+
+        # Clean old generated tools (> 7 days)
+        if ("/tmp/generated-tools" | path exists) {
+          let old_tools = (ls /tmp/generated-tools -s | where modified < ((date now) - 7day) | get name)
+          if ($old_tools | length) > 0 {
+            $old_tools | each { |file| rm -f $file }
+            print $"🗑️ Cleaned ($old_tools | length) old generated tools"
+          }
+        }
+
+        # Clean old cache (> 30 days, keep longer)
+        if ("/var/cache/kestra/tools" | path exists) {
+          let old_cache = (ls /var/cache/kestra/tools -s | where modified < ((date now) - 30day) | get name)
+          if ($old_cache | length) > 0 {
+            $old_cache | each { |file| rm -f $file }
+            print $"🗑️ Cleaned ($old_cache | length) old cache entries"
+          }
+        }
+
+        print "✓ Artifact cleanup complete"
+        '
 
   - id: fail
     type: io.kestra.plugin.core.execution.Exit
