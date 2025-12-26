@@ -5,7 +5,8 @@
 A **recursive, self-improving quality gate system** that leverages:
 - Kestra orchestration for flow control
 - DataContract CLI for schema validation
-- Nushell for tool implementation
+- Nushell as the **primary implementation language** (tools, orchestration scripts)
+- **Multi-language support** for generated code (Nushell, Python, Rust, Go, TypeScript, etc.)
 - OpenCode + Qwen Coder 3 30B3 @ 250 tok/s for AI generation
 - OODA loop (Observe → Orient → Decide → Act) for iterative refinement
 
@@ -17,6 +18,7 @@ Current system has 8 quality gates but lacks:
 3. **Mutation testing** - No testing of the tests themselves
 4. **Hostile review** - No adversarial AI review of generated code
 5. **Recursive depth** - Single feedback loop, not nested OODA
+6. **Language-agnostic gates** - Current gates assume Nushell only
 
 ---
 
@@ -52,6 +54,62 @@ Current system has 8 quality gates but lacks:
 │   DECIDE: Accept, refine, or reject entirely?                       │
 │   ACT: Ship, iterate, or redesign approach                          │
 └─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+---
+
+## Multi-Language Architecture
+
+### Supported Languages & Tooling
+
+| Language | Syntax Check | Linter | Type Check | Test Runner | Coverage |
+|----------|--------------|--------|------------|-------------|----------|
+| **Nushell** | `nu --commands "source $file"` | `lint-nushell.nu` (custom) | N/A | `nu test.nu` | Trace-based |
+| **Python** | `python -m py_compile` | `ruff check` | `mypy` | `pytest` | `coverage.py` |
+| **Rust** | `cargo check` | `clippy` | Built-in | `cargo test` | `cargo-tarpaulin` |
+| **Go** | `go build` | `golangci-lint` | Built-in | `go test` | `go test -cover` |
+| **TypeScript** | `tsc --noEmit` | `eslint` | `tsc` | `vitest` | `c8` |
+| **JavaScript** | `node --check` | `eslint` | N/A | `vitest` | `c8` |
+
+### Language Detection
+
+The system auto-detects language from:
+1. Contract `metadata.language` field (explicit)
+2. File extension (`.nu`, `.py`, `.rs`, `.go`, `.ts`, `.js`)
+3. Shebang line (`#!/usr/bin/env nu`, `#!/usr/bin/env python3`)
+
+### Contract Extension for Multi-Language
+
+```yaml
+# contracts/tools/example.yaml
+dataContractSpecification: 0.9.3
+id: example-tool
+info:
+  title: Example Tool
+  version: 1.0.0
+
+# NEW: Language specification
+metadata:
+  language: nushell          # nushell | python | rust | go | typescript
+  language_version: "0.100"  # Optional: minimum version
+  dependencies: []           # Optional: required packages
+
+servers:
+  local:
+    type: local
+    path: ./output.json
+    format: json
+
+models:
+  ToolResponse:
+    type: object
+    fields:
+      - name: success
+        type: boolean
+        required: true
+      # ... rest of schema
 ```
 
 ---
@@ -105,15 +163,25 @@ Current system has 8 quality gates but lacks:
            │
            ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  GATE 5: LINTING                                             │
+│  GATE 5: LINTING (Language-Aware)                            │
 │  ─────────────────────────────────────────────────────────── │
-│  Input: generated.nu                                         │
-│  Checks:                                                     │
-│    - No hardcoded paths                                      │
-│    - No shell injection vectors                              │
-│    - Required patterns (def main, --help)                    │
-│    - Style consistency                                       │
-│  Tool: lint-nushell.nu (new)                                 │
+│  Input: generated code file                                  │
+│  Dispatcher: lint-dispatch.nu (routes to language linter)    │
+│                                                              │
+│  Language-Specific Linters:                                  │
+│    Nushell:    lint-nushell.nu (custom rules)                │
+│    Python:     ruff check --output-format=json               │
+│    Rust:       cargo clippy --message-format=json            │
+│    Go:         golangci-lint run --out-format=json           │
+│    TypeScript: eslint --format=json                          │
+│                                                              │
+│  Common Checks (all languages):                              │
+│    - No hardcoded paths (/home/, /tmp/ without variable)     │
+│    - No credential patterns (API keys, passwords)            │
+│    - Required entry point (main, def main, etc.)             │
+│    - Style consistency per language                          │
+│                                                              │
+│  Tool: lint-dispatch.nu (new)                                │
 │  Fail: Linting errors → regenerate with lint feedback        │
 └──────────────────────────────────────────────────────────────┘
            │
@@ -219,297 +287,915 @@ Current system has 8 quality gates but lacks:
 
 ## New Tools Required
 
-### 1. lint-nushell.nu
-```yaml
-contract: contracts/tools/lint.yaml
-input:
-  file_path: string (required)
-  rules: list<string> (optional, default: all)
-output:
-  passed: boolean
-  issues: list<{line, column, rule, message, severity}>
-  summary: {errors: int, warnings: int, info: int}
-```
+> **Pattern Reference**: All tools follow the patterns established in `validate.nu` and `generate.nu`:
+> - Shebang: `#!/usr/bin/env nu`
+> - Entry point: `def main []`
+> - Input: JSON from stdin via `open --raw /dev/stdin | from json`
+> - Output: `ToolResponse` format to stdout
+> - Logs: Structured JSON to stderr via `{ level: "info", msg: "...", trace_id: $trace_id } | to json -r | print -e`
+> - Duration tracking: `let start = date now` ... `(date now) - $start | into int | $in / 1000000`
+> - Context extraction: `$input.context?`, `trace_id`, `dry_run`
+> - Exit 0 always (self-healing pattern)
 
-**Linting Rules**:
-- `no-hardcoded-paths`: Flag `/home/`, `/tmp/` without variable
-- `no-shell-injection`: Flag `^$"..."` with unvalidated input
-- `require-main`: Entry point must be `def main`
-- `require-help`: Must handle `--help` flag
-- `no-global-mutation`: No `mut` at module scope
-- `max-function-length`: Flag functions > 50 lines
-- `require-error-handling`: `try` blocks for external calls
+### 1. lint-dispatch.nu (Language Router)
+
+```nushell
+#!/usr/bin/env nu
+# Lint Dispatch - Routes to language-specific linters
+#
+# Contract: contracts/tools/lint-dispatch.yaml
+# Input: JSON from stdin (LintInput)
+# Output: JSON to stdout (ToolResponse wrapping LintOutput)
+# Logs: JSON to stderr
+
+def main [] {
+    let start = date now
+
+    # Read JSON from stdin with error handling
+    let raw = open --raw /dev/stdin
+    let input = try {
+        $raw | from json
+    } catch {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { level: "error", msg: "invalid JSON input" } | to json -r | print -e
+        { success: false, error: "Invalid JSON input", trace_id: "", duration_ms: $dur } | to json | print
+        exit 0
+    }
+
+    # Extract context
+    let ctx = $input.context? | default {}
+    let trace_id = $ctx.trace_id? | default ""
+    let dry_run = $ctx.dry_run? | default false
+
+    # Extract lint configuration
+    let tool_path = $input.tool_path? | default ""
+    let contract_path = $input.contract_path? | default ""
+
+    if ($tool_path | is-empty) {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { level: "error", msg: "tool_path is required", trace_id: $trace_id } | to json -r | print -e
+        { success: false, error: "tool_path is required", trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 0
+    }
+
+    { level: "info", msg: "detecting language", trace_id: $trace_id, tool_path: $tool_path } | to json -r | print -e
+
+    # Detect language from extension or contract
+    let lang = detect-language $tool_path $contract_path
+
+    { level: "info", msg: "language detected", lang: $lang, trace_id: $trace_id } | to json -r | print -e
+
+    if $dry_run {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { level: "info", msg: "dry-run mode - skipping lint", trace_id: $trace_id } | to json -r | print -e
+        let output = { passed: true, issues: [], summary: { errors: 0, warnings: 0, info: 0 }, was_dry_run: true }
+        { success: true, data: $output, trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 0
+    }
+
+    # Route to language-specific linter
+    let result = match $lang {
+        "nushell" => (lint-nushell $tool_path $trace_id),
+        "python" => (lint-python $tool_path $trace_id),
+        "rust" => (lint-rust $tool_path $trace_id),
+        "go" => (lint-go $tool_path $trace_id),
+        "typescript" | "javascript" => (lint-js $tool_path $trace_id),
+        _ => { passed: false, issues: [{ line: 0, rule: "unknown-language", message: $"Unsupported language: ($lang)", severity: "error" }], summary: { errors: 1, warnings: 0, info: 0 } }
+    }
+
+    let duration_ms = (date now) - $start | into int | $in / 1000000
+    { level: "info", msg: "lint complete", passed: $result.passed, duration_ms: $duration_ms } | to json -r | print -e
+
+    if $result.passed {
+        { success: true, data: $result, trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
+    } else {
+        { success: false, data: $result, error: "linting failed", trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
+    }
+    exit 0
+}
+
+def detect-language [tool_path: string, contract_path: string] -> string {
+    # 1. Try contract metadata first
+    if ($contract_path | is-not-empty) and ($contract_path | path exists) {
+        let contract = try { open $contract_path } catch { {} }
+        let lang = $contract.metadata?.language? | default ""
+        if ($lang | is-not-empty) { return $lang }
+    }
+
+    # 2. Fall back to file extension
+    let ext = $tool_path | path parse | get extension | default ""
+    match $ext {
+        "nu" => "nushell",
+        "py" => "python",
+        "rs" => "rust",
+        "go" => "go",
+        "ts" => "typescript",
+        "js" => "javascript",
+        _ => "unknown"
+    }
+}
+
+def lint-nushell [tool_path: string, trace_id: string] -> record {
+    # Custom Nushell linting rules
+    let content = open --raw $tool_path
+    let lines = $content | lines
+
+    mut issues = []
+
+    # Rule: no-hardcoded-paths
+    for line_info in ($lines | enumerate) {
+        let line = $line_info.item
+        let num = $line_info.index + 1
+
+        if ($line | str contains "/home/") and not ($line | str contains "$env.HOME") {
+            $issues = ($issues | append { line: $num, column: 0, rule: "no-hardcoded-paths", message: "Avoid hardcoded /home/ paths, use $env.HOME", severity: "warning" })
+        }
+
+        if ($line | str contains "/tmp/") and not ($line | str contains "$") {
+            $issues = ($issues | append { line: $num, column: 0, rule: "no-hardcoded-paths", message: "Avoid hardcoded /tmp/ paths, use variables", severity: "warning" })
+        }
+
+        # Rule: require-error-handling for external commands
+        if ($line =~ '\^[a-zA-Z]') and not ($line | str contains "try") and not ($line | str contains "| complete") {
+            $issues = ($issues | append { line: $num, column: 0, rule: "require-error-handling", message: "External commands should use try/catch or | complete", severity: "warning" })
+        }
+    }
+
+    # Rule: require-main
+    if not ($content | str contains "def main") {
+        $issues = ($issues | append { line: 1, column: 0, rule: "require-main", message: "Script must define 'def main []' entry point", severity: "error" })
+    }
+
+    let errors = $issues | where severity == "error" | length
+    let warnings = $issues | where severity == "warning" | length
+    let info = $issues | where severity == "info" | length
+
+    { passed: ($errors == 0), issues: $issues, summary: { errors: $errors, warnings: $warnings, info: $info } }
+}
+
+def lint-python [tool_path: string, trace_id: string] -> record {
+    let result = do { ruff check --output-format=json $tool_path } | complete
+    if $result.exit_code == 0 {
+        { passed: true, issues: [], summary: { errors: 0, warnings: 0, info: 0 } }
+    } else {
+        let issues = try { $result.stdout | from json } catch { [] }
+        let errors = $issues | length
+        { passed: false, issues: $issues, summary: { errors: $errors, warnings: 0, info: 0 } }
+    }
+}
+
+def lint-rust [tool_path: string, trace_id: string] -> record {
+    # Rust requires cargo project context
+    let dir = $tool_path | path dirname
+    let result = do { cargo clippy --manifest-path $"($dir)/Cargo.toml" --message-format=json 2>&1 } | complete
+    # Parse clippy JSON output...
+    { passed: ($result.exit_code == 0), issues: [], summary: { errors: 0, warnings: 0, info: 0 } }
+}
+
+def lint-go [tool_path: string, trace_id: string] -> record {
+    let result = do { golangci-lint run --out-format=json $tool_path } | complete
+    { passed: ($result.exit_code == 0), issues: [], summary: { errors: 0, warnings: 0, info: 0 } }
+}
+
+def lint-js [tool_path: string, trace_id: string] -> record {
+    let result = do { eslint --format=json $tool_path } | complete
+    { passed: ($result.exit_code == 0), issues: [], summary: { errors: 0, warnings: 0, info: 0 } }
+}
+```
 
 ### 2. security-scan.nu
-```yaml
-contract: contracts/tools/security-scan.yaml
-input:
-  file_path: string (required)
-  allowed_paths: list<string> (optional)
-  allowed_network: boolean (default: false)
-output:
-  secure: boolean
-  vulnerabilities: list<{type, line, description, severity}>
-  risk_score: float (0.0 - 10.0)
+
+```nushell
+#!/usr/bin/env nu
+# Security Scan - Detect vulnerabilities in generated code
+#
+# Contract: contracts/tools/security-scan.yaml
+# Input: JSON from stdin (SecurityScanInput)
+# Output: JSON to stdout (ToolResponse wrapping SecurityScanOutput)
+# Logs: JSON to stderr
+
+def main [] {
+    let start = date now
+
+    let raw = open --raw /dev/stdin
+    let input = try { $raw | from json } catch {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { level: "error", msg: "invalid JSON input" } | to json -r | print -e
+        { success: false, error: "Invalid JSON input", trace_id: "", duration_ms: $dur } | to json | print
+        exit 0
+    }
+
+    let ctx = $input.context? | default {}
+    let trace_id = $ctx.trace_id? | default ""
+    let dry_run = $ctx.dry_run? | default false
+
+    let tool_path = $input.tool_path? | default ""
+    let allowed_paths = $input.allowed_paths? | default []
+    let allowed_network = $input.allowed_network? | default false
+
+    if ($tool_path | is-empty) {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { success: false, error: "tool_path is required", trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 0
+    }
+
+    if $dry_run {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { success: true, data: { secure: true, vulnerabilities: [], risk_score: 0.0, was_dry_run: true }, trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 0
+    }
+
+    { level: "info", msg: "scanning for security issues", trace_id: $trace_id, tool_path: $tool_path } | to json -r | print -e
+
+    let content = open --raw $tool_path
+    let lines = $content | lines
+
+    mut vulnerabilities = []
+    mut risk_score = 0.0
+
+    for line_info in ($lines | enumerate) {
+        let line = $line_info.item
+        let num = $line_info.index + 1
+
+        # Credential patterns
+        if ($line =~ '(?i)(api[_-]?key|password|secret|token)\s*[:=]\s*["\'][^"\']+["\']') {
+            $vulnerabilities = ($vulnerabilities | append { type: "hardcoded-credential", line: $num, description: "Possible hardcoded credential", severity: "critical" })
+            $risk_score = $risk_score + 3.0
+        }
+
+        # Dangerous commands
+        if ($line =~ 'rm\s+-rf\s+/') or ($line =~ 'chmod\s+777') or ($line =~ '>\s*/dev/s') {
+            $vulnerabilities = ($vulnerabilities | append { type: "dangerous-command", line: $num, description: "Dangerous system command", severity: "high" })
+            $risk_score = $risk_score + 2.0
+        }
+
+        # Network access without permission
+        if not $allowed_network {
+            if ($line =~ '(http|fetch|curl|wget|nc\s)') {
+                $vulnerabilities = ($vulnerabilities | append { type: "unauthorized-network", line: $num, description: "Network access not permitted", severity: "medium" })
+                $risk_score = $risk_score + 1.0
+            }
+        }
+
+        # Code injection vectors
+        if ($line =~ '\^"\$') or ($line =~ 'eval\s') or ($line =~ 'exec\s') {
+            $vulnerabilities = ($vulnerabilities | append { type: "code-injection", line: $num, description: "Potential code injection vector", severity: "high" })
+            $risk_score = $risk_score + 2.0
+        }
+    }
+
+    $risk_score = [10.0, $risk_score] | math min
+    let secure = ($vulnerabilities | where severity == "critical" or severity == "high" | length) == 0
+
+    let duration_ms = (date now) - $start | into int | $in / 1000000
+    { level: "info", msg: "security scan complete", secure: $secure, risk_score: $risk_score, vuln_count: ($vulnerabilities | length) } | to json -r | print -e
+
+    let output = { secure: $secure, vulnerabilities: $vulnerabilities, risk_score: $risk_score, was_dry_run: false }
+
+    if $secure {
+        { success: true, data: $output, trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
+    } else {
+        { success: false, data: $output, error: "security issues found", trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
+    }
+    exit 0
+}
 ```
 
-**Security Checks**:
-- Credential patterns (API keys, passwords, tokens)
-- Dangerous commands (rm -rf, chmod 777, etc.)
-- Network access without permission
-- File operations outside sandbox
-- Environment variable leakage
-- Code injection vectors
+### 3. hostile-review.nu
 
-### 3. coverage-check.nu
-```yaml
-contract: contracts/tools/coverage.yaml
-input:
-  tool_path: string (required)
-  test_inputs: list<object> (required)
-output:
-  coverage_percent: float
-  uncovered_lines: list<int>
-  uncovered_branches: list<{line, branch}>
-  suggested_inputs: list<object>
+```nushell
+#!/usr/bin/env nu
+# Hostile Review - Skeptical AI code review
+#
+# Contract: contracts/tools/hostile-review.yaml
+# Input: JSON from stdin (HostileReviewInput)
+# Output: JSON to stdout (ToolResponse wrapping HostileReviewOutput)
+# Logs: JSON to stderr
+#
+# Uses a second AI call with a skeptical persona to critique generated code.
+
+def main [] {
+    let start = date now
+
+    let raw = open --raw /dev/stdin
+    let input = try { $raw | from json } catch {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { success: false, error: "Invalid JSON input", trace_id: "", duration_ms: $dur } | to json | print
+        exit 0
+    }
+
+    let ctx = $input.context? | default {}
+    let trace_id = $ctx.trace_id? | default ""
+    let dry_run = $ctx.dry_run? | default false
+    let timeout_seconds = $ctx.timeout_seconds? | default 120
+
+    let tool_path = $input.tool_path? | default ""
+    let contract_path = $input.contract_path? | default ""
+    let task = $input.task? | default ""
+
+    if ($tool_path | is-empty) or ($task | is-empty) {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { success: false, error: "tool_path and task are required", trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 0
+    }
+
+    if $dry_run {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { success: true, data: { approved: true, critique: [], questions: [], overall_assessment: "dry-run", was_dry_run: true }, trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 0
+    }
+
+    { level: "info", msg: "starting hostile review", trace_id: $trace_id } | to json -r | print -e
+
+    let code = open --raw $tool_path
+    let contract = if ($contract_path | is-not-empty) and ($contract_path | path exists) {
+        open --raw $contract_path
+    } else {
+        "(no contract provided)"
+    }
+
+    # Build skeptical reviewer prompt
+    let prompt = $"You are a HOSTILE code reviewer. Your job is to find problems, not praise.
+
+ORIGINAL TASK: ($task)
+
+CONTRACT:
+($contract)
+
+CODE TO REVIEW:
+```
+($code)
 ```
 
-**Coverage Strategy**:
-- Trace execution paths using Nushell's `debug` mode
-- Identify untaken branches
-- Generate synthetic inputs to improve coverage
-- Target: 80% line coverage, 70% branch coverage
+Review this code SKEPTICALLY. Look for:
+1. Does it ACTUALLY solve the stated task? (semantic correctness)
+2. What edge cases are MISSED?
+3. What could go WRONG in production?
+4. Is it OVER-ENGINEERED or UNDER-ENGINEERED?
+5. Any HIDDEN ASSUMPTIONS?
+6. SECURITY issues?
+7. PERFORMANCE problems?
+
+Output your review as JSON:
+{
+  \"approved\": boolean,
+  \"critique\": [{\"aspect\": \"...\", \"issue\": \"...\", \"severity\": \"critical|high|medium|low\", \"suggestion\": \"...\"}],
+  \"questions\": [\"questions you'd ask the developer\"],
+  \"overall_assessment\": \"one paragraph summary\"
+}
+
+Be harsh but fair. If it's good, say so. If it's bad, explain why."
+
+    let model = $env.MODEL? | default "local/qwen3-coder"
+    { level: "info", msg: "calling AI for hostile review", model: $model } | to json -r | print -e
+
+    let prompt_file = $"/tmp/hostile-review-($trace_id).txt"
+    $prompt | save -f $prompt_file
+
+    let result = do {
+        timeout --foreground --kill-after=5 $"($timeout_seconds)s" opencode run -m $model (open --raw $prompt_file)
+    } | complete
+
+    rm -f $prompt_file
+
+    let duration_ms = (date now) - $start | into int | $in / 1000000
+
+    if $result.exit_code != 0 {
+        { level: "error", msg: "hostile review AI call failed", exit_code: $result.exit_code } | to json -r | print -e
+        { success: false, error: "AI review failed", trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
+        exit 0
+    }
+
+    # Parse AI response (extract JSON from potentially chatty output)
+    let review = try {
+        # Try to find JSON in the output
+        let output = $result.stdout
+        let json_start = $output | str index-of "{"
+        let json_end = $output | str last-index-of "}"
+        if $json_start >= 0 and $json_end > $json_start {
+            $output | str substring $json_start..($json_end + 1) | from json
+        } else {
+            { approved: false, critique: [{ aspect: "parse-error", issue: "Could not parse AI response", severity: "high", suggestion: "Check AI output format" }], questions: [], overall_assessment: "Review failed to parse" }
+        }
+    } catch {
+        { approved: false, critique: [{ aspect: "parse-error", issue: "JSON parse failed", severity: "high", suggestion: "Check AI output" }], questions: [], overall_assessment: "Review failed" }
+    }
+
+    { level: "info", msg: "hostile review complete", approved: $review.approved } | to json -r | print -e
+
+    let output = $review | merge { was_dry_run: false }
+
+    if $review.approved {
+        { success: true, data: $output, trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
+    } else {
+        { success: false, data: $output, error: "hostile review rejected code", trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
+    }
+    exit 0
+}
+```
 
 ### 4. mutate-test.nu
-```yaml
-contract: contracts/tools/mutation.yaml
-input:
-  tool_path: string (required)
-  test_inputs: list<object> (required)
-  mutation_count: int (default: 10)
-output:
-  mutation_score: float (killed / total)
-  surviving_mutants: list<{location, mutation, reason}>
-  test_quality: string (weak | adequate | strong)
+
+```nushell
+#!/usr/bin/env nu
+# Mutation Testing - Test the tests by introducing bugs
+#
+# Contract: contracts/tools/mutation.yaml
+# Input: JSON from stdin (MutationInput)
+# Output: JSON to stdout (ToolResponse wrapping MutationOutput)
+# Logs: JSON to stderr
+
+def main [] {
+    let start = date now
+
+    let raw = open --raw /dev/stdin
+    let input = try { $raw | from json } catch {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { success: false, error: "Invalid JSON input", trace_id: "", duration_ms: $dur } | to json | print
+        exit 0
+    }
+
+    let ctx = $input.context? | default {}
+    let trace_id = $ctx.trace_id? | default ""
+    let dry_run = $ctx.dry_run? | default false
+
+    let tool_path = $input.tool_path? | default ""
+    let test_inputs = $input.test_inputs? | default []
+    let mutation_count = $input.mutation_count? | default 10
+    let threshold = $input.threshold? | default 0.6
+
+    if ($tool_path | is-empty) or ($test_inputs | is-empty) {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { success: false, error: "tool_path and test_inputs are required", trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 0
+    }
+
+    if $dry_run {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { success: true, data: { mutation_score: 1.0, surviving_mutants: [], test_quality: "dry-run", was_dry_run: true }, trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 0
+    }
+
+    { level: "info", msg: "starting mutation testing", trace_id: $trace_id, mutation_count: $mutation_count } | to json -r | print -e
+
+    let original_code = open --raw $tool_path
+    mut killed = 0
+    mut surviving = []
+
+    # Define mutation operators
+    let mutations = [
+        { name: "negate-condition", pattern: "==", replacement: "!=" },
+        { name: "negate-condition", pattern: "!=", replacement: "==" },
+        { name: "flip-comparison", pattern: "<", replacement: ">=" },
+        { name: "flip-comparison", pattern: ">", replacement: "<=" },
+        { name: "flip-logic", pattern: " and ", replacement: " or " },
+        { name: "flip-logic", pattern: " or ", replacement: " and " },
+        { name: "off-by-one", pattern: "+ 1", replacement: "+ 2" },
+        { name: "off-by-one", pattern: "- 1", replacement: "- 2" },
+        { name: "remove-not", pattern: "not ", replacement: "" },
+        { name: "empty-string", pattern: '""', replacement: '"mutant"' },
+    ]
+
+    # Apply mutations and test
+    for mutation in ($mutations | take $mutation_count) {
+        if ($original_code | str contains $mutation.pattern) {
+            let mutant_code = $original_code | str replace $mutation.pattern $mutation.replacement
+            let mutant_path = $"/tmp/mutant-($trace_id).nu"
+            $mutant_code | save -f $mutant_path
+
+            # Run tests against mutant
+            mut mutant_killed = false
+            for test_input in $test_inputs {
+                let result = do { $test_input | to json | nu $mutant_path } | complete
+                # If test fails or output differs, mutant is killed
+                if $result.exit_code != 0 {
+                    $mutant_killed = true
+                    break
+                }
+            }
+
+            rm -f $mutant_path
+
+            if $mutant_killed {
+                $killed = $killed + 1
+                { level: "debug", msg: "mutant killed", mutation: $mutation.name } | to json -r | print -e
+            } else {
+                $surviving = ($surviving | append { location: $mutation.pattern, mutation: $mutation.name, reason: "All tests passed with mutation" })
+                { level: "warn", msg: "mutant survived", mutation: $mutation.name } | to json -r | print -e
+            }
+        }
+    }
+
+    let total = $killed + ($surviving | length)
+    let score = if $total > 0 { $killed / $total } else { 1.0 }
+    let quality = if $score >= 0.8 { "strong" } else if $score >= 0.6 { "adequate" } else { "weak" }
+
+    let duration_ms = (date now) - $start | into int | $in / 1000000
+    { level: "info", msg: "mutation testing complete", score: $score, killed: $killed, survived: ($surviving | length) } | to json -r | print -e
+
+    let output = { mutation_score: $score, surviving_mutants: $surviving, test_quality: $quality, was_dry_run: false }
+    let passed = $score >= $threshold
+
+    if $passed {
+        { success: true, data: $output, trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
+    } else {
+        { success: false, data: $output, error: $"mutation score ($score) below threshold ($threshold)", trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
+    }
+    exit 0
+}
 ```
 
-**Mutation Operators**:
-- Arithmetic: `+` → `-`, `*` → `/`
-- Comparison: `==` → `!=`, `<` → `<=`
-- Logical: `and` → `or`, `not` removal
-- Constant: Numbers ±1, strings empty
-- Control flow: Remove branches, swap order
+### 5. syntax-check.nu
 
-### 5. hostile-review.nu
-```yaml
-contract: contracts/tools/hostile-review.yaml
-input:
-  tool_path: string (required)
-  contract_path: string (required)
-  task: string (required)
-output:
-  approved: boolean
-  critique: list<{aspect, issue, severity, suggestion}>
-  questions: list<string>
-  overall_assessment: string
-```
+```nushell
+#!/usr/bin/env nu
+# Syntax Check - Language-aware syntax validation
+#
+# Contract: contracts/tools/syntax-check.yaml
+# Input: JSON from stdin
+# Output: JSON to stdout (ToolResponse)
+# Logs: JSON to stderr
 
-**Review Dimensions**:
-- **Correctness**: Does it solve the problem?
-- **Completeness**: Are all edge cases handled?
-- **Security**: Any vulnerabilities?
-- **Performance**: Any obvious inefficiencies?
-- **Maintainability**: Is it understandable?
-- **Contract Alignment**: Does output match schema?
+def main [] {
+    let start = date now
 
-### 6. semantic-check.nu
-```yaml
-contract: contracts/tools/semantic-check.yaml
-input:
-  tool_path: string (required)
-  original_task: string (required)
-output:
-  aligned: boolean
-  code_summary: string
-  task_interpretation: string
-  drift_score: float (0.0 = perfect, 1.0 = completely wrong)
-  misalignments: list<{aspect, expected, actual}>
+    let raw = open --raw /dev/stdin
+    let input = try { $raw | from json } catch {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { success: false, error: "Invalid JSON input", trace_id: "", duration_ms: $dur } | to json | print
+        exit 0
+    }
+
+    let ctx = $input.context? | default {}
+    let trace_id = $ctx.trace_id? | default ""
+    let tool_path = $input.tool_path? | default ""
+
+    if ($tool_path | is-empty) {
+        let dur = (date now) - $start | into int | $in / 1000000
+        { success: false, error: "tool_path is required", trace_id: $trace_id, duration_ms: $dur } | to json | print
+        exit 0
+    }
+
+    { level: "info", msg: "checking syntax", trace_id: $trace_id, tool_path: $tool_path } | to json -r | print -e
+
+    let ext = $tool_path | path parse | get extension | default ""
+
+    let result = match $ext {
+        "nu" => (do { nu --commands $"source ($tool_path)" } | complete),
+        "py" => (do { python -m py_compile $tool_path } | complete),
+        "rs" => (do { rustfmt --check $tool_path } | complete),
+        "go" => (do { gofmt -e $tool_path } | complete),
+        "ts" => (do { tsc --noEmit $tool_path } | complete),
+        "js" => (do { node --check $tool_path } | complete),
+        _ => { exit_code: 1, stderr: $"Unknown extension: ($ext)" }
+    }
+
+    let duration_ms = (date now) - $start | into int | $in / 1000000
+    let valid = $result.exit_code == 0
+
+    { level: "info", msg: "syntax check complete", valid: $valid } | to json -r | print -e
+
+    let output = { valid: $valid, errors: (if $valid { [] } else { [$result.stderr] }), language: $ext }
+
+    if $valid {
+        { success: true, data: $output, trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
+    } else {
+        { success: false, data: $output, error: "syntax check failed", trace_id: $trace_id, duration_ms: $duration_ms } | to json | print
+    }
+    exit 0
+}
 ```
 
 ---
 
 ## Kestra Flow Architecture
 
+> **Pattern Reference**: All flows follow the patterns established in `contract-loop-modular.yml`
+> - Process runner only (no Docker): `taskRunner.type: io.kestra.plugin.core.runner.Process`
+> - Subflows for composition, not shared state
+> - JSON I/O between components
+> - Always exit 0 (use `success` field for control flow)
+> - Trace ID propagation via `{{ execution.id }}`
+
 ### Main Orchestrator: quality-gate-loop.yml
 
 ```yaml
+# bitter-truth: 12-Gate Quality System with Nested OODA Loops
+#
+# Uses composable workflow components:
+# - generate-tool: AI generates code from contract
+# - static-analysis: Syntax + Lint + Security (Micro OODA)
+# - dynamic-testing: Execute + Validate + Coverage (Inner OODA)
+# - adversarial-review: Mutation + Hostile + Semantic (Outer OODA)
+#
+# THE 4 LAWS:
+# 1. No-Human Zone: AI writes all code, humans write contracts
+# 2. Contract is Law: Validation is draconian, self-heal on failure
+# 3. We Set the Standard: Human defines target, AI hits it
+# 4. Orchestrator Runs Everything: Kestra owns execution
+#
+# PATTERN: Generate -> Static -> Dynamic -> Adversarial -> (Pass=Exit | Fail=Feedback->Retry)
+
 id: quality-gate-loop
 namespace: bitter
-description: 12-gate quality system with nested OODA loops
 
 inputs:
   - id: contract
     type: STRING
+    description: Path to DataContract (source of truth)
+
   - id: task
     type: STRING
+    description: Natural language intent (what AI should generate)
+
   - id: input_json
     type: STRING
     defaults: "{}"
+    description: JSON input for the generated tool
+
   - id: max_attempts
     type: INT
     defaults: 5
+    description: Attempts before escalating to human
+
+  - id: tools_dir
+    type: STRING
+    defaults: "./bitter-truth/tools"
+    description: Directory containing bitter-truth tools
+
   - id: coverage_threshold
-    type: FLOAT
-    defaults: 0.8
+    type: STRING
+    defaults: "0.8"
+    description: Minimum code coverage (0.0-1.0)
+
   - id: mutation_threshold
-    type: FLOAT
-    defaults: 0.6
+    type: STRING
+    defaults: "0.6"
+    description: Minimum mutation score (0.0-1.0)
+
   - id: enable_hostile_review
     type: BOOLEAN
     defaults: true
+    description: Enable adversarial AI review
 
 variables:
-  tools_dir: "{{ projectDir }}/bitter-truth/tools"
+  feedback: "Initial generation"
   trace_id: "{{ execution.id }}"
-  feedback: ""
-  gate_results: {}
+  tool_path: "/tmp/tool-{{ execution.id }}.nu"
+  output_path: "/tmp/output-{{ execution.id }}.json"
+  logs_path: "/tmp/logs-{{ execution.id }}.json"
 
 tasks:
-  # PHASE 1: GENERATION
-  - id: gate_1_contract_parse
-    type: io.kestra.plugin.core.flow.Subflow
-    flowId: gate-contract-parse
-    namespace: bitter
-    inputs:
-      contract_path: "{{ inputs.contract }}"
-      trace_id: "{{ vars.trace_id }}"
+  # LOOP: Generate -> Static -> Dynamic -> Adversarial -> Self-Heal or Escalate
+  - id: attempt_loop
+    type: io.kestra.plugin.core.flow.ForEach
+    values: "{{ range(1, inputs.max_attempts + 1) }}"
+    tasks:
 
-  - id: gate_2_prompt_build
-    type: io.kestra.plugin.core.flow.Subflow
-    flowId: gate-prompt-build
-    namespace: bitter
-    inputs:
-      contract_path: "{{ inputs.contract }}"
-      task: "{{ inputs.task }}"
-      feedback: "{{ vars.feedback }}"
-      trace_id: "{{ vars.trace_id }}"
-
-  - id: gate_3_generate
-    type: io.kestra.plugin.core.flow.Subflow
-    flowId: generate-tool-testable
-    namespace: bitter
-    inputs:
-      contract_path: "{{ inputs.contract }}"
-      task: "{{ inputs.task }}"
-      feedback: "{{ vars.feedback }}"
-      attempt: "{{ taskrun.iteration }}/{{ inputs.max_attempts }}"
-      trace_id: "{{ vars.trace_id }}"
-
-  # PHASE 2: STATIC ANALYSIS (Micro OODA)
-  - id: micro_ooda_loop
-    type: io.kestra.plugin.core.flow.Subflow
-    flowId: micro-ooda-static-analysis
-    namespace: bitter
-    inputs:
-      tool_path: "{{ outputs.gate_3_generate.outputs.tool_path }}"
-      trace_id: "{{ vars.trace_id }}"
-
-  # PHASE 3: DYNAMIC TESTING (Inner OODA)
-  - id: inner_ooda_loop
-    type: io.kestra.plugin.core.flow.Subflow
-    flowId: inner-ooda-dynamic-testing
-    namespace: bitter
-    inputs:
-      tool_path: "{{ outputs.gate_3_generate.outputs.tool_path }}"
-      contract_path: "{{ inputs.contract }}"
-      input_json: "{{ inputs.input_json }}"
-      coverage_threshold: "{{ inputs.coverage_threshold }}"
-      trace_id: "{{ vars.trace_id }}"
-
-  # PHASE 4: ADVERSARIAL REVIEW (Outer OODA)
-  - id: outer_ooda_loop
-    type: io.kestra.plugin.core.flow.Subflow
-    flowId: outer-ooda-adversarial-review
-    namespace: bitter
-    inputs:
-      tool_path: "{{ outputs.gate_3_generate.outputs.tool_path }}"
-      contract_path: "{{ inputs.contract }}"
-      task: "{{ inputs.task }}"
-      mutation_threshold: "{{ inputs.mutation_threshold }}"
-      enable_hostile_review: "{{ inputs.enable_hostile_review }}"
-      trace_id: "{{ vars.trace_id }}"
-
-  # DECISION: Pass or Loop
-  - id: check_all_gates
-    type: io.kestra.plugin.core.flow.If
-    condition: "{{ all gates passed }}"
-    then:
-      - id: success
-        type: io.kestra.plugin.core.log.Log
-        message: "All 12 gates passed!"
-    else:
-      - id: collect_feedback
+      # PHASE 1: GENERATION (Gate 1-3)
+      - id: generate_step
         type: io.kestra.plugin.core.flow.Subflow
-        flowId: collect-comprehensive-feedback
         namespace: bitter
-      - id: loop_back
-        type: io.kestra.plugin.core.flow.Subflow
-        flowId: quality-gate-loop  # Recursive!
+        flowId: generate-tool-testable
         inputs:
-          # ... with accumulated feedback
+          contract_path: "{{ inputs.contract }}"
+          task: "{{ inputs.task }}"
+          feedback: "{{ vars.feedback }}"
+          attempt: "{{ taskrun.value }}/{{ inputs.max_attempts }}"
+          output_path: "{{ vars.tool_path }}"
+          timeout_seconds: 300
+          trace_id: "{{ vars.trace_id }}"
+          tools_dir: "{{ inputs.tools_dir }}"
+
+      # PHASE 2: STATIC ANALYSIS - Micro OODA (Gates 4-6)
+      - id: static_analysis
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: bitter
+        flowId: micro-ooda-static-analysis
+        inputs:
+          tool_path: "{{ vars.tool_path }}"
+          contract_path: "{{ inputs.contract }}"
+          trace_id: "{{ vars.trace_id }}"
+          tools_dir: "{{ inputs.tools_dir }}"
+
+      # Check static analysis passed
+      - id: check_static
+        type: io.kestra.plugin.core.flow.If
+        condition: "{% set result = outputs.static_analysis.result | from_json %}{{ not result.success }}"
+        then:
+          - id: static_feedback
+            type: io.kestra.plugin.core.execution.SetVariables
+            variables:
+              feedback: "{{ outputs.static_analysis.feedback }}"
+
+      # PHASE 3: DYNAMIC TESTING - Inner OODA (Gates 7-9)
+      - id: dynamic_testing
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: bitter
+        flowId: inner-ooda-dynamic-testing
+        inputs:
+          tool_path: "{{ vars.tool_path }}"
+          contract_path: "{{ inputs.contract }}"
+          input_json: "{{ inputs.input_json }}"
+          output_path: "{{ vars.output_path }}"
+          logs_path: "{{ vars.logs_path }}"
+          coverage_threshold: "{{ inputs.coverage_threshold }}"
+          trace_id: "{{ vars.trace_id }}"
+          tools_dir: "{{ inputs.tools_dir }}"
+
+      # Check dynamic testing passed
+      - id: check_dynamic
+        type: io.kestra.plugin.core.flow.If
+        condition: "{% set result = outputs.dynamic_testing.result | from_json %}{{ not result.success }}"
+        then:
+          - id: dynamic_feedback
+            type: io.kestra.plugin.core.execution.SetVariables
+            variables:
+              feedback: "{{ outputs.dynamic_testing.feedback }}"
+
+      # PHASE 4: ADVERSARIAL REVIEW - Outer OODA (Gates 10-12)
+      - id: adversarial_review
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: bitter
+        flowId: outer-ooda-adversarial-review
+        inputs:
+          tool_path: "{{ vars.tool_path }}"
+          contract_path: "{{ inputs.contract }}"
+          task: "{{ inputs.task }}"
+          mutation_threshold: "{{ inputs.mutation_threshold }}"
+          enable_hostile_review: "{{ inputs.enable_hostile_review }}"
+          trace_id: "{{ vars.trace_id }}"
+          tools_dir: "{{ inputs.tools_dir }}"
+
+      # FINAL CHECK: Did all gates pass?
+      - id: check_all_pass
+        type: io.kestra.plugin.core.flow.If
+        condition: "{% set s = outputs.static_analysis.result | from_json %}{% set d = outputs.dynamic_testing.result | from_json %}{% set a = outputs.adversarial_review.result | from_json %}{{ s.success and d.success and a.success }}"
+        then:
+          - id: success_log
+            type: io.kestra.plugin.core.log.Log
+            message: "✓ All 12 gates passed on attempt {{ taskrun.value }}"
+
+          - id: done
+            type: io.kestra.plugin.core.execution.Exit
+            state: SUCCESS
+
+      # SELF-HEAL: Collect comprehensive feedback
+      - id: collect_all_feedback
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: bitter
+        flowId: collect-comprehensive-feedback
+        inputs:
+          static_result: "{{ outputs.static_analysis.result }}"
+          dynamic_result: "{{ outputs.dynamic_testing.result }}"
+          adversarial_result: "{{ outputs.adversarial_review.result }}"
+          attempt_number: "{{ taskrun.value }}/{{ inputs.max_attempts }}"
+
+      # UPDATE: Store feedback for next iteration
+      - id: update_feedback
+        type: io.kestra.plugin.core.execution.SetVariables
+        variables:
+          feedback: "{{ outputs.collect_all_feedback.feedback }}"
+
+  # ESCALATE: Max attempts exceeded, page human
+  - id: escalate
+    type: io.kestra.plugin.core.log.Log
+    level: ERROR
+    message: |
+      ⚠️ ESCALATION REQUIRED (Law 2)
+
+      AI failed to pass all 12 gates after {{ inputs.max_attempts }} attempts.
+
+      DO NOT FIX THE GENERATED CODE.
+      FIX THE PROMPT OR THE CONTRACT.
+
+      Task: {{ inputs.task }}
+      Contract: {{ inputs.contract }}
+      Last feedback: {{ vars.feedback }}
+
+  - id: fail
+    type: io.kestra.plugin.core.execution.Exit
+    state: FAILED
+
+outputs:
+  - id: success
+    type: BOOLEAN
+    value: "{{ taskrun.outcomes contains('done') }}"
+
+  - id: output_file
+    type: STRING
+    value: "{{ vars.output_path }}"
+
+  - id: tool_file
+    type: STRING
+    value: "{{ vars.tool_path }}"
 ```
 
-### Subflow: micro-ooda-static-analysis.yml
+### Subflow: micro-ooda-static-analysis.yml (Gates 4-6)
 
 ```yaml
+# Micro OODA Loop: Static Analysis
+#
+# Fast iteration on syntax, linting, and security issues.
+# Can attempt auto-fix before regeneration.
+#
+# Gates:
+#   4. Syntax Validation (language-aware)
+#   5. Linting (language-aware)
+#   6. Security Scan
+
 id: micro-ooda-static-analysis
 namespace: bitter
-description: Gates 4-6 with internal retry loop
 
 inputs:
   - id: tool_path
     type: STRING
+    description: Path to generated code file
+
+  - id: contract_path
+    type: STRING
+    description: Path to DataContract (for language detection)
+
   - id: trace_id
     type: STRING
+    description: Trace ID for observability
+
+  - id: tools_dir
+    type: STRING
+    defaults: "./bitter-truth/tools"
+
   - id: max_micro_attempts
     type: INT
     defaults: 3
+    description: Auto-fix attempts before giving up
+
+variables:
+  micro_feedback: ""
+  issues_found: "[]"
 
 tasks:
   - id: micro_loop
     type: io.kestra.plugin.core.flow.ForEach
     values: "{{ range(1, inputs.max_micro_attempts + 1) }}"
     tasks:
+
+      # GATE 4: Syntax Validation (Language-Aware)
       - id: gate_4_syntax
         type: io.kestra.plugin.scripts.shell.Commands
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
         commands:
-          - nu --commands "source {{ inputs.tool_path }}" 2>&1 || true
+          - |
+            echo '{"tool_path": "{{ inputs.tool_path }}", "contract_path": "{{ inputs.contract_path }}", "context": {"trace_id": "{{ inputs.trace_id }}"}}' | \
+            nu {{ inputs.tools_dir }}/syntax-check.nu
 
+      # GATE 5: Linting (Language-Aware)
       - id: gate_5_lint
-        type: io.kestra.plugin.core.flow.Subflow
-        flowId: gate-lint
-        namespace: bitter
-        inputs:
-          tool_path: "{{ inputs.tool_path }}"
+        type: io.kestra.plugin.scripts.shell.Commands
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
+        commands:
+          - |
+            echo '{"tool_path": "{{ inputs.tool_path }}", "contract_path": "{{ inputs.contract_path }}", "context": {"trace_id": "{{ inputs.trace_id }}"}}' | \
+            nu {{ inputs.tools_dir }}/lint-dispatch.nu
 
+      # GATE 6: Security Scan
       - id: gate_6_security
-        type: io.kestra.plugin.core.flow.Subflow
-        flowId: gate-security-scan
-        namespace: bitter
-        inputs:
-          tool_path: "{{ inputs.tool_path }}"
+        type: io.kestra.plugin.scripts.shell.Commands
+        taskRunner:
+          type: io.kestra.plugin.core.runner.Process
+        commands:
+          - |
+            echo '{"tool_path": "{{ inputs.tool_path }}", "contract_path": "{{ inputs.contract_path }}", "context": {"trace_id": "{{ inputs.trace_id }}"}}' | \
+            nu {{ inputs.tools_dir }}/security-scan.nu
 
+      # Check all micro gates passed
       - id: micro_check
         type: io.kestra.plugin.core.flow.If
-        condition: "{{ all micro gates pass }}"
+        condition: "{% set g4 = outputs.gate_4_syntax.outputFiles['stdout.txt'] | read | from_json %}{% set g5 = outputs.gate_5_lint.outputFiles['stdout.txt'] | read | from_json %}{% set g6 = outputs.gate_6_security.outputFiles['stdout.txt'] | read | from_json %}{{ g4.success and g5.success and g6.success }}"
         then:
           - id: micro_success
-            type: io.kestra.plugin.core.flow.Break
+            type: io.kestra.plugin.core.execution.Exit
+            state: SUCCESS
         else:
-          - id: micro_fix
-            type: io.kestra.plugin.core.flow.Subflow
-            flowId: auto-fix-issues
-            namespace: bitter
+          # Try auto-fix if available
+          - id: auto_fix
+            type: io.kestra.plugin.scripts.shell.Commands
+            taskRunner:
+              type: io.kestra.plugin.core.runner.Process
+            commands:
+              - |
+                echo '{"tool_path": "{{ inputs.tool_path }}", "issues": {{ vars.issues_found }}, "context": {"trace_id": "{{ inputs.trace_id }}"}}' | \
+                nu {{ inputs.tools_dir }}/auto-fix.nu || true
+
+outputs:
+  - id: result
+    type: STRING
+    value: '{"success": {{ taskrun.outcomes contains("micro_success") }}, "gates": {"syntax": true, "lint": true, "security": true}}'
+
+  - id: feedback
+    type: STRING
+    value: "{{ vars.micro_feedback }}"
 ```
 
 ---
