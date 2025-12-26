@@ -1,0 +1,437 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AI Code Validator - Execution DAG
+  
+  Purpose: Machine-parseable validation flow with explicit dependencies,
+  blocking conditions, and state transitions. Designed for agentic execution.
+  
+  Usage: Load this for orchestration logic. Load SHORTCUTS.md and LANG_*.md
+  for detailed reference content.
+-->
+<validator version="2.0">
+
+  <config>
+    <modules>
+      <module id="shortcuts" path="SHORTCUTS.md" load="on_deep_review"/>
+      <module id="rust" path="LANG_RUST.md" load="when_lang_rust"/>
+      <module id="go" path="LANG_GO.md" load="when_lang_go"/>
+      <module id="gleam" path="LANG_GLEAM.md" load="when_lang_gleam"/>
+      <module id="nushell" path="LANG_NUSHELL.md" load="when_lang_nushell"/>
+      <module id="kestra" path="LANG_KESTRA.md" load="when_lang_kestra"/>
+      <module id="examples" path="EXAMPLES.md" load="on_training"/>
+    </modules>
+    <severity_levels>
+      <level id="blocking" halts="true" verdict="REJECT"/>
+      <level id="high" halts="false" verdict="NEEDS_WORK"/>
+      <level id="medium" halts="false" verdict="NEEDS_WORK"/>
+      <level id="low" halts="false" verdict="PASS_WITH_SUGGESTIONS"/>
+    </severity_levels>
+  </config>
+
+  <!--
+    VALIDATION DAG
+    
+    Phases execute in dependency order.
+    Blocking issues halt progression.
+    State accumulates across phases.
+  -->
+  <dag>
+    
+    <!-- PHASE 1: Parse Requirements -->
+    <phase id="P1_REQUIREMENTS" blocking="false">
+      <description>Extract requirements before examining code</description>
+      <depends_on/>
+      
+      <inputs>
+        <input ref="original_request" required="true"/>
+      </inputs>
+      
+      <steps>
+        <step id="extract_explicit">
+          <action>List every explicit requirement (E1, E2, ...)</action>
+          <output>explicit_requirements[]</output>
+        </step>
+        <step id="infer_implicit">
+          <action>Infer implicit requirements (I1, I2, ...)</action>
+          <output>implicit_requirements[]</output>
+        </step>
+        <step id="identify_constraints">
+          <action>Extract constraints (C1, C2, ...)</action>
+          <output>constraints[]</output>
+        </step>
+        <step id="note_ambiguities">
+          <action>Flag ambiguities (A1, A2, ...)</action>
+          <output>ambiguities[]</output>
+        </step>
+        <step id="build_checklist">
+          <action>Combine into validation checklist</action>
+          <output>validation_checklist[]</output>
+        </step>
+      </steps>
+      
+      <outputs>
+        <output id="requirements_parsed" type="checklist"/>
+      </outputs>
+    </phase>
+
+    <!-- PHASE 2: Completeness Scan -->
+    <phase id="P2_COMPLETENESS" blocking="true">
+      <description>Detect incomplete code. BLOCKING if found.</description>
+      <depends_on>
+        <phase ref="P1_REQUIREMENTS"/>
+      </depends_on>
+      
+      <inputs>
+        <input ref="generated_code" required="true"/>
+      </inputs>
+      
+      <checks>
+        <check id="S001" severity="blocking" ref="shortcuts#S001">
+          <name>Explicit Placeholders</name>
+          <patterns>TODO, FIXME, XXX, "implement this", "your code here"</patterns>
+          <on_found>HALT: List all placeholders with locations</on_found>
+        </check>
+        <check id="S002" severity="blocking" ref="shortcuts#S002">
+          <name>Code Ellipsis</name>
+          <patterns>... (as code), // ...</patterns>
+          <on_found>HALT: Flag truncated sections</on_found>
+        </check>
+        <check id="S003" severity="blocking" ref="shortcuts#S003">
+          <name>Language Placeholders</name>
+          <patterns>todo!(), unimplemented!(), raise NotImplementedError, pass</patterns>
+          <on_found>HALT: Identify stub implementations</on_found>
+        </check>
+        <check id="S004" severity="blocking" ref="shortcuts#S004">
+          <name>Truncation</name>
+          <patterns>Unbalanced braces, unclosed strings, mid-statement EOF</patterns>
+          <on_found>HALT: Code is structurally incomplete</on_found>
+        </check>
+        <check id="S005" severity="high" ref="shortcuts#S005">
+          <name>Stub Functions</name>
+          <detection>Function exists but returns hardcoded/trivial value</detection>
+          <on_found>Flag each stub with expected behavior</on_found>
+        </check>
+        <check id="S006" severity="high" ref="shortcuts#S006">
+          <name>Partial Iteration</name>
+          <detection>Request specifies N items, only M implemented (M &lt; N)</detection>
+          <on_found>List missing implementations</on_found>
+        </check>
+        <check id="S007" severity="high" ref="shortcuts#S007">
+          <name>Missing Components</name>
+          <detection>Identifiers used but never defined/imported</detection>
+          <on_found>List undefined references</on_found>
+        </check>
+      </checks>
+      
+      <transition>
+        <if condition="any_blocking_found">
+          <verdict>REJECT</verdict>
+          <halt>true</halt>
+          <message>Code incomplete. Cannot evaluate further.</message>
+        </if>
+        <else>
+          <proceed_to>P3_REQUIREMENTS</proceed_to>
+        </else>
+      </transition>
+    </phase>
+
+    <!-- PHASE 3: Requirement Verification -->
+    <phase id="P3_REQUIREMENTS" blocking="true">
+      <description>Verify code fulfills original request</description>
+      <depends_on>
+        <phase ref="P2_COMPLETENESS" status="passed"/>
+      </depends_on>
+      
+      <inputs>
+        <input ref="validation_checklist" from="P1_REQUIREMENTS"/>
+        <input ref="generated_code"/>
+      </inputs>
+      
+      <checks>
+        <check id="S017" severity="blocking" ref="shortcuts#S017">
+          <name>Wrong Problem Solved</name>
+          <detection>Code solves different problem than requested</detection>
+        </check>
+        <check id="S018" severity="high" ref="shortcuts#S018">
+          <name>Scope Reduction</name>
+          <detection>Implements subset, ignores rest of requirements</detection>
+        </check>
+        <check id="S019" severity="medium" ref="shortcuts#S019">
+          <name>Scope Expansion</name>
+          <detection>Adds unrequested features while missing requested ones</detection>
+        </check>
+        <check id="S020" severity="high" ref="shortcuts#S020">
+          <name>Interface Mismatch</name>
+          <detection>Different signatures/types than requested</detection>
+        </check>
+      </checks>
+      
+      <verification>
+        <for_each ref="validation_checklist">
+          <map_to_code>Identify implementing code</map_to_code>
+          <verify_fulfillment>Does it actually satisfy the requirement?</verify_fulfillment>
+          <status options="MET|PARTIAL|MISSING|WRONG"/>
+        </for_each>
+      </verification>
+      
+      <transition>
+        <if condition="requirements_not_met">
+          <verdict>REJECT</verdict>
+          <halt>true</halt>
+          <message>Requirements not fulfilled. List unmet requirements.</message>
+        </if>
+        <else>
+          <proceed_to>P4_CORRECTNESS</proceed_to>
+        </else>
+      </transition>
+    </phase>
+
+    <!-- PHASE 4: Correctness Verification -->
+    <phase id="P4_CORRECTNESS" blocking="false">
+      <description>Verify logic, edge cases, error handling</description>
+      <depends_on>
+        <phase ref="P3_REQUIREMENTS" status="passed"/>
+      </depends_on>
+      
+      <checks>
+        <check id="S008" severity="high" ref="shortcuts#S008">
+          <name>Happy Path Only</name>
+          <questions>
+            <q>What if input is null/undefined?</q>
+            <q>What if input is wrong type?</q>
+            <q>What if external call fails?</q>
+            <q>What if resource doesn't exist?</q>
+          </questions>
+        </check>
+        <check id="S009" severity="high" ref="shortcuts#S009">
+          <name>Edge Case Ignorance</name>
+          <categories>
+            <cat>Numeric: zero, negative, overflow</cat>
+            <cat>Collections: empty, single, large</cat>
+            <cat>Strings: empty, whitespace, unicode</cat>
+            <cat>Temporal: midnight, DST, timezones</cat>
+            <cat>Concurrency: races, exhaustion</cat>
+          </categories>
+        </check>
+        <check id="S010" severity="high" ref="shortcuts#S010">
+          <name>Simplified Algorithm</name>
+          <detection>Implementation complexity doesn't match problem complexity</detection>
+        </check>
+        <check id="S011" severity="medium" ref="shortcuts#S011">
+          <name>Hardcoded Assumptions</name>
+          <patterns>Magic numbers, hardcoded URLs, embedded config</patterns>
+        </check>
+        <check id="S012" severity="high" ref="shortcuts#S012">
+          <name>Inverted Logic</name>
+          <detection>Condition is opposite of requirement</detection>
+        </check>
+      </checks>
+      
+      <language_specific>
+        <if lang="rust" load="LANG_RUST.md">
+          <checks ref="RS001-RS010"/>
+        </if>
+        <if lang="go" load="LANG_GO.md">
+          <checks ref="GO001-GO009"/>
+        </if>
+        <if lang="gleam" load="LANG_GLEAM.md">
+          <checks ref="GL001-GL010"/>
+        </if>
+        <if lang="nushell" load="LANG_NUSHELL.md">
+          <checks ref="NU001-NU010"/>
+        </if>
+        <if lang="kestra" load="LANG_KESTRA.md">
+          <checks ref="KE001-KE010"/>
+        </if>
+      </language_specific>
+      
+      <proceed_to>P5_HALLUCINATION</proceed_to>
+    </phase>
+
+    <!-- PHASE 5: Hallucination Detection -->
+    <phase id="P5_HALLUCINATION" blocking="true">
+      <description>Verify APIs/methods actually exist</description>
+      <depends_on>
+        <phase ref="P4_CORRECTNESS"/>
+      </depends_on>
+      
+      <checks>
+        <check id="S013" severity="blocking" ref="shortcuts#S013">
+          <name>Hallucinated Imports</name>
+          <action>Verify every import statement</action>
+          <on_uncertain>Flag for manual verification</on_uncertain>
+        </check>
+        <check id="S014" severity="blocking" ref="shortcuts#S014">
+          <name>Hallucinated Methods</name>
+          <action>Verify method names and signatures</action>
+        </check>
+        <check id="S015" severity="high" ref="shortcuts#S015">
+          <name>Hallucinated Behavior</name>
+          <action>Verify assumed API behavior</action>
+        </check>
+        <check id="S016" severity="medium" ref="shortcuts#S016">
+          <name>Hallucinated Config</name>
+          <action>Verify CLI flags, env vars, settings</action>
+        </check>
+      </checks>
+      
+      <transition>
+        <if condition="hallucination_confirmed">
+          <verdict>REJECT</verdict>
+          <halt>true</halt>
+          <message>Code uses non-existent APIs</message>
+        </if>
+        <else>
+          <proceed_to>P6_TESTS</proceed_to>
+        </else>
+      </transition>
+    </phase>
+
+    <!-- PHASE 6: Test Verification (if applicable) -->
+    <phase id="P6_TESTS" blocking="false" optional="true">
+      <description>Verify test quality if tests present</description>
+      <depends_on>
+        <phase ref="P5_HALLUCINATION" status="passed"/>
+      </depends_on>
+      
+      <precondition>tests_present OR tests_requested</precondition>
+      
+      <checks>
+        <check id="S021" severity="high" ref="shortcuts#S021">
+          <name>Tautological Tests</name>
+          <patterns>assert True, expect(x).toBeDefined()</patterns>
+        </check>
+        <check id="S022" severity="high" ref="shortcuts#S022">
+          <name>Happy Path Only Tests</name>
+          <missing>Error cases, edge cases, failure scenarios</missing>
+        </check>
+        <check id="S023" severity="high" ref="shortcuts#S023">
+          <name>Implementation-Coupled Tests</name>
+          <detection>Tests internal details not behavior</detection>
+        </check>
+        <check id="S024" severity="high" ref="shortcuts#S024">
+          <name>Mock Abuse</name>
+          <detection>Mocks replace all real logic</detection>
+        </check>
+        <check id="S025" severity="high" ref="shortcuts#S025">
+          <name>Bug-Mirroring Tests</name>
+          <detection>Expected values from buggy output</detection>
+        </check>
+      </checks>
+      
+      <proceed_to>P7_QUALITY</proceed_to>
+    </phase>
+
+    <!-- PHASE 7: Quality Assessment -->
+    <phase id="P7_QUALITY" blocking="false">
+      <description>Non-blocking quality suggestions</description>
+      <depends_on>
+        <phase ref="P6_TESTS"/>
+      </depends_on>
+      
+      <checks>
+        <check id="S026" severity="medium" ref="shortcuts#S026">
+          <name>Copy-Paste Code</name>
+        </check>
+        <check id="S027" severity="medium" ref="shortcuts#S027">
+          <name>God Functions</name>
+          <indicators>&gt;50 lines, deep nesting, mixed concerns</indicators>
+        </check>
+        <check id="S028" severity="medium" ref="shortcuts#S028">
+          <name>Inefficient Algorithms</name>
+          <patterns>O(n²) hidden in loops, N+1 queries</patterns>
+        </check>
+        <check id="S029" severity="medium" ref="shortcuts#S029">
+          <name>Resource Leaks</name>
+          <resources>Files, connections, sockets, timers</resources>
+        </check>
+        <check id="S030" severity="low" ref="shortcuts#S030">
+          <name>Poor Naming</name>
+        </check>
+      </checks>
+      
+      <proceed_to>VERDICT</proceed_to>
+    </phase>
+
+  </dag>
+
+  <!-- VERDICT AGGREGATION -->
+  <verdict_logic>
+    <rule priority="1">
+      <condition>any phase HALT</condition>
+      <verdict>REJECT</verdict>
+      <output>
+        <section name="blocking_issues">
+          <for_each ref="issues" where="severity=blocking">
+            <format>[{id}] BLOCKING - {name}</format>
+            <format>Location: {location}</format>
+            <format>Evidence: {evidence}</format>
+            <format>Required: {resolution}</format>
+          </for_each>
+        </section>
+        <message>Do not submit until blocking issues resolved.</message>
+      </output>
+    </rule>
+    
+    <rule priority="2">
+      <condition>issues where severity IN (high, medium)</condition>
+      <verdict>NEEDS_WORK</verdict>
+      <output>
+        <section name="requirements_status">
+          <for_each ref="validation_checklist">
+            <format>- [{status}] {requirement}</format>
+          </for_each>
+        </section>
+        <section name="issues">
+          <for_each ref="issues" order_by="severity">
+            <format>[{id}] {severity} - {name}</format>
+            <format>Location: {location}</format>
+            <format>Impact: {impact}</format>
+            <format>Resolution: {resolution}</format>
+          </for_each>
+        </section>
+      </output>
+    </rule>
+    
+    <rule priority="3">
+      <condition>only low severity OR no issues</condition>
+      <verdict>PASS</verdict>
+      <output>
+        <section name="requirements_verified">
+          <for_each ref="validation_checklist">
+            <format>- [x] {requirement}: {evidence}</format>
+          </for_each>
+        </section>
+        <section name="suggestions" if="issues.count > 0">
+          <for_each ref="issues" where="severity=low">
+            <format>- {description}</format>
+          </for_each>
+        </section>
+      </output>
+    </rule>
+  </verdict_logic>
+
+  <!-- OUTPUT FORMAT RULES -->
+  <output_rules>
+    <rule id="cite_evidence">
+      Every claim must reference specific code location
+    </rule>
+    <rule id="severity_classification">
+      BLOCKING > HIGH > MEDIUM > LOW
+    </rule>
+    <rule id="actionable_feedback">
+      Concrete fix instructions, not vague suggestions
+    </rule>
+    <rule id="distinguish_certainty">
+      "definitely wrong" vs "probably wrong" vs "verify this"
+    </rule>
+    <rule id="group_related">
+      Same pattern in multiple places → single issue, multiple locations
+    </rule>
+    <rule id="proportional_response">
+      Simple code + no issues → brief PASS
+      Complex code + many issues → detailed breakdown
+    </rule>
+  </output_rules>
+
+</validator>
