@@ -60,12 +60,14 @@ tasks:
           "FIX THE NUSHELL SCRIPT TO SATISFY THE CONTRACT."
         ] | str join "\n"
 
-        # Save and output feedback
-        $feedback | save -f /tmp/feedback.txt
-        print $feedback
+        # Output feedback using Kestra ::{}:: pattern for shell outputs
+        # Escape quotes in feedback for JSON
+        let escaped = ($feedback | str replace --all "\"" "\\\"" | str replace --all "\n" "\\n")
+        print $"::{{\"outputs\":{{\"feedback\":\"($escaped)\"}}}}::"
         '
 
 outputs:
+  # FIX: Use Kestra shell output pattern (::{}::) to capture feedback
   - id: feedback
     type: STRING
-    value: "{{ read('/tmp/feedback.txt') }}"
+    value: "{{ outputs.collect.vars.feedback }}"

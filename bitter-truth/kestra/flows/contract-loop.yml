@@ -148,17 +148,18 @@ tasks:
         message: "→ Attempt {{ taskrun.value }}/{{ inputs.max_attempts }} (Trace: {{ vars.trace_id }})"
 
       # EXPONENTIAL BACKOFF: Wait before retry (P1-1)
+      # FIX: Use pow() function instead of ** operator (Pebble doesn't have **)
       - id: wait_before_retry
         type: io.kestra.plugin.core.flow.If
         condition: "{{ taskrun.value > 1 }}"  # Skip on first attempt
         then:
           - id: backoff_delay
             type: io.kestra.plugin.core.flow.Sleep
-            duration: "PT{{ 2 ** (taskrun.value - 2) }}S"  # 1s, 2s, 4s, 8s, 16s
+            duration: "PT{{ 2 | pow(taskrun.value - 2) | int }}S"  # 1s, 2s, 4s, 8s, 16s
           - id: log_backoff
             type: io.kestra.plugin.core.log.Log
             level: INFO
-            message: "Waited {{ 2 ** (taskrun.value - 2) }}s before retry (exponential backoff)"
+            message: "Waited {{ 2 | pow(taskrun.value - 2) | int }}s before retry (exponential backoff)"
 
       # 1. GENERATE: AI generates Nushell from contract + feedback
       - id: generate_step
@@ -351,10 +352,22 @@ tasks:
     type: io.kestra.plugin.core.execution.Exit
     state: FAILED
 
+# FINALLY: Always run cleanup, even on success_exit or failure
+finally:
+  - id: final_cleanup
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: Clean up workspace (runs on success OR failure)
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - rm -rf {{ vars.work_dir }}
+    allowFailure: true
+
 outputs:
+  # FIX: Use execution.state instead of invalid taskrun.outcomes syntax
   - id: success
     type: BOOLEAN
-    value: "{{ taskrun.outcomes contains('success_exit') }}"
+    value: "{{ execution.state == 'SUCCESS' }}"
     description: Whether workflow succeeded
 
   - id: output_file
