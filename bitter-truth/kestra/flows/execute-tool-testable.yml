@@ -180,11 +180,6 @@ outputs:
     value: "{{ outputs.execute.outputFiles[inputs.logs_path] }}"
     description: URI to stored tool logs (in internal storage)
 
-  - id: success
-    type: BOOLEAN
-    value: "{{ outputs.validate_output_files.exit_code == 0 }}"
-    description: Whether execution succeeded
-
   - id: trace_id
     type: STRING
     value: "{{ inputs.trace_id }}"

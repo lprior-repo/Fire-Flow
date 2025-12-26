@@ -142,15 +142,15 @@ tasks:
       # EXPONENTIAL BACKOFF: Wait before retry (P1-1)
       - id: wait_before_retry
         type: io.kestra.plugin.core.flow.If
-        condition: "{{ taskrun.value > 1 }}"  # Skip on first attempt
+        condition: "{{ taskrun.value != 1 }}"  # Skip on first attempt
         then:
           - id: backoff_delay
             type: io.kestra.plugin.core.flow.Sleep
-            duration: "PT{{ 2 ** (taskrun.value - 2) }}S"  # 1s, 2s, 4s, 8s, 16s
+            duration: "PT1S"  # Simple 1s delay between retries
           - id: log_backoff
             type: io.kestra.plugin.core.log.Log
             level: INFO
-            message: "Waited {{ 2 ** (taskrun.value - 2) }}s before retry (exponential backoff)"
+            message: "Waited 1s before retry (backoff)"
 
       # 1. GENERATE: AI generates Nushell from contract + feedback
       - id: generate_step
@@ -329,11 +329,6 @@ tasks:
     state: FAILED
 
 outputs:
-  - id: success
-    type: BOOLEAN
-    value: "{{ taskrun.outcomes contains('success_exit') }}"
-    description: Whether workflow succeeded
-
   - id: output_file
     type: STRING
     value: "{{ vars.work_dir }}/output.json"
@@ -350,6 +345,6 @@ outputs:
     description: Workflow trace ID
 
   - id: attempts_made
-    type: INT
-    value: "{{ vars.attempt_count | int }}"
+    type: STRING
+    value: "{{ vars.attempt_count }}"
     description: Number of attempts before success/failure

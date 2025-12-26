@@ -162,11 +162,6 @@ outputs:
     value: "{{ outputs.validate.outputFiles['/tmp/validation-result.json'] }}"
     description: URI to stored validation result (in internal storage)
 
-  - id: success
-    type: BOOLEAN
-    value: "{{ outputs.validate.exit_code == 0 }}"
-    description: Whether validation completed successfully
-
   - id: output_file
     type: STRING
     value: "{{ inputs.output_path }}"

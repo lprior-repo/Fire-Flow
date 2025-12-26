@@ -62,21 +62,21 @@ tasks:
     commands:
       - |
         nu -c '
-        let errors = []
+        mut errors = []
 
         # Check contract exists
         if not ("{{ inputs.contract_path }}" | path exists) {
-          $errors += ["Contract file not found: {{ inputs.contract_path }}"]
+          $errors = ($errors | append ["Contract file not found: {{ inputs.contract_path }}"])
         }
 
         # Check task is not empty
         if ("{{ inputs.task }}" | is-empty) {
-          $errors += ["Task description is required"]
+          $errors = ($errors | append ["Task description is required"])
         }
 
         # Check tools_dir exists
         if not ("{{ inputs.tools_dir }}" | path exists) {
-          $errors += ["Tools directory not found: {{ inputs.tools_dir }}"]
+          $errors = ($errors | append ["Tools directory not found: {{ inputs.tools_dir }}"])
         }
 
         if ($errors | length) > 0 {
@@ -173,11 +173,6 @@ outputs:
     type: STRING
     value: "{{ inputs.output_path }}"
     description: Path to generated tool
-
-  - id: success
-    type: BOOLEAN
-    value: "{{ outputs.validate_output.exit_code == 0 }}"
-    description: Whether generation and validation succeeded
 
   - id: trace_id
     type: STRING
