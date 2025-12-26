@@ -157,16 +157,6 @@ tasks:
         '
 
 outputs:
-  - id: validation_result
-    type: STRING
-    value: "{{ outputs.validate.outputFiles['/tmp/validation-result.json'] }}"
-    description: URI to stored validation result (in internal storage)
-
-  - id: output_file
-    type: STRING
-    value: "{{ inputs.output_path }}"
-    description: Path to validated output
-
   - id: trace_id
     type: STRING
     value: "{{ inputs.trace_id }}"

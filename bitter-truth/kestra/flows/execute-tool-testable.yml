@@ -170,16 +170,6 @@ tasks:
         '
 
 outputs:
-  - id: output_file
-    type: STRING
-    value: "{{ outputs.execute.outputFiles[inputs.output_path] }}"
-    description: URI to stored tool output (in internal storage)
-
-  - id: logs_file
-    type: STRING
-    value: "{{ outputs.execute.outputFiles[inputs.logs_path] }}"
-    description: URI to stored tool logs (in internal storage)
-
   - id: trace_id
     type: STRING
     value: "{{ inputs.trace_id }}"
