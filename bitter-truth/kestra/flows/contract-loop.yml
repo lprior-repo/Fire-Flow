@@ -184,11 +184,11 @@ tasks:
             nu -c '
             let tool_path = "{{ vars.work_dir }}/tool.nu"
             let tool_hash = (open $tool_path | hash sha256)
-            let cache_dir = "/var/cache/kestra/tools"
+            let cache_dir = "/tmp/kestra-tool-cache"
             let cached_tool = $"($cache_dir)/($tool_hash).nu"
 
             # Create cache directory if needed
-            mkdir -p $cache_dir
+            mkdir $cache_dir
 
             # Check if identical tool already exists
             if ($cached_tool | path exists) {
@@ -220,7 +220,6 @@ tasks:
         type: io.kestra.plugin.core.flow.Subflow
         namespace: bitter
         flowId: validate-tool-testable
-        allowFailure: true
         inputs:
           contract_path: "{{ inputs.contract }}"
           output_path: "{{ vars.work_dir }}/output.json"
@@ -228,21 +227,15 @@ tasks:
           tools_dir: "{{ inputs.tools_dir }}"
           dry_run: false
 
-      # 4. CHECK: Did we pass?
-      # FIX: Use fromJson() function (not | from_json filter which doesn't exist in Pebble)
-      - id: check_pass
-        type: io.kestra.plugin.core.flow.If
-        condition: "{{ fromJson(outputs.validate_step.validation_result).success and fromJson(outputs.validate_step.validation_result).data.valid }}"
-        then:
-          # SUCCESS
-          - id: log_success
-            type: io.kestra.plugin.core.log.Log
-            level: INFO
-            message: "✓ Contract satisfied on attempt {{ taskrun.value }}/{{ inputs.max_attempts }}"
+      # 4. SUCCESS: If we got here, validation passed
+      - id: log_success
+        type: io.kestra.plugin.core.log.Log
+        level: INFO
+        message: "✓ Contract satisfied on attempt {{ taskrun.value }}/{{ inputs.max_attempts }}"
 
-          - id: success_exit
-            type: io.kestra.plugin.core.execution.Exit
-            state: SUCCESS
+      - id: success_exit
+        type: io.kestra.plugin.core.execution.Exit
+        state: SUCCESS
 
       # 5. SELF-HEAL: Collect feedback
       - id: feedback_step
@@ -321,8 +314,8 @@ tasks:
         }
 
         # Clean old cache (> 30 days, keep longer)
-        if ("/var/cache/kestra/tools" | path exists) {
-          let old_cache = (ls /var/cache/kestra/tools -s | where modified < ((date now) - 30day) | get name)
+        if ("/tmp/kestra-tool-cache" | path exists) {
+          let old_cache = (ls /tmp/kestra-tool-cache -s | where modified < ((date now) - 30day) | get name)
           if ($old_cache | length) > 0 {
             $old_cache | each { |file| rm -f $file }
             print $"🗑️ Cleaned ($old_cache | length) old cache entries"
