@@ -146,6 +146,7 @@ def "wrong_schema_tool_should_fail_contract_validation" [] {
     # Act - Validate against echo contract
     let validate_result = {
         contract_path: ($contracts_dir | path join "echo.yaml")
+        output_path: $output_path
         server: "local"
         context: { trace_id: "test-wrong" }
     } | to json | nu ($tools_dir | path join "validate.nu") | complete

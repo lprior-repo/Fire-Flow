@@ -102,8 +102,6 @@ tasks:
     description: Validate via DataContract + validate.nu
     taskRunner:
       type: io.kestra.plugin.core.runner.Process
-    outputFiles:
-      - "/tmp/validation-result.json"
     env:
       PATH: "/home/lewis/.local/bin:/usr/local/bin:/usr/bin:/bin"
       HOME: /tmp
@@ -122,9 +120,13 @@ tasks:
             data: { valid: true, was_dry_run: true },
             trace_id: "{{ inputs.trace_id }}"
           }
-          $result | to json | save -f /tmp/validation-result.json
-          # Only print summary to stdout, not full result!
-          print { success: true, valid: true, trace_id: "{{ inputs.trace_id }}" } | to json
+          let result_json = ($result | to json -r)
+          # Escape quotes for JSON embedding and output as Kestra variable
+          let dq = (char double_quote)
+          let escaped = ($result_json | str replace $dq $"\\($dq)" --all)
+          let kestra_output = $"::{($dq)outputs($dq):{($dq)validation_result($dq):($dq)($escaped)($dq)}}::"
+          print $kestra_output
+          { success: true, valid: true, trace_id: "{{ inputs.trace_id }}" } | to json | print
         } else {
           # Call validate.nu with contract
           { level: "info", msg: "Running contract validation", contract: "{{ inputs.contract_path }}", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
@@ -149,11 +151,15 @@ tasks:
           }
 
           let response = $result.stdout | from json
-          # Save full response to file
-          $response | to json | save -f /tmp/validation-result.json
-          # Only print summary to stdout!
+          let result_json = ($response | to json -r)
+          # Escape quotes and newlines for JSON embedding and output as Kestra variable
+          let dq = (char double_quote)
+          let escaped = ($result_json | str replace '\\' '\\\\' --all | str replace $dq $"\\($dq)" --all | str replace "\n" "\\n" --all | str replace "\r" "\\r" --all | str replace "\t" "\\t" --all)
+          let kestra_output = $"::{($dq)outputs($dq):{($dq)validation_result($dq):($dq)($escaped)($dq)}}::"
+          print $kestra_output
+          # Print summary to stdout
           let is_valid = ($response.data?.valid? | default false)
-          print { success: $response.success, valid: $is_valid, trace_id: "{{ inputs.trace_id }}" } | to json
+          { success: $response.success, valid: $is_valid, trace_id: "{{ inputs.trace_id }}" } | to json | print
         }
         '
 
@@ -162,3 +168,8 @@ outputs:
     type: STRING
     value: "{{ inputs.trace_id }}"
     description: Trace ID for observability
+
+  - id: validation_result
+    type: STRING
+    value: "{{ outputs.validate.vars.validation_result }}"
+    description: Validation result JSON (for feedback collection)
