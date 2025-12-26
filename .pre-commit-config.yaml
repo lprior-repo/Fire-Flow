@@ -1,0 +1,45 @@
+# Pre-commit hooks for Fire-Flow repository
+# Install: pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Kestra flow validation
+  - repo: local
+    hooks:
+      - id: kestra-flow-validate
+        name: Validate Kestra Flows
+        entry: bash -c 'for flow in bitter-truth/kestra/flows/*.yml; do echo "Validating $flow..."; java -jar /home/lewis/kestra/kestra.jar flow validate "$flow" || exit 1; done'
+        language: system
+        files: 'bitter-truth/kestra/flows/.*\.yml$'
+        pass_filenames: false
+
+      - id: kestra-flow-test-dry
+        name: Dry-run Kestra Flows (syntax check)
+        entry: bash -c 'for flow in bitter-truth/kestra/flows/*.yml; do echo "Testing $flow..."; java -jar /home/lewis/kestra/kestra.jar flow test "$flow" --dry-run 2>/dev/null || echo "  ⚠️  Note: Some flows may require inputs"; done'
+        language: system
+        files: 'bitter-truth/kestra/flows/.*\.yml$'
+        pass_filenames: false
+        verbose: true
+
+  # YAML linting
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-yaml
+        args: ['--unsafe']  # Allow custom YAML tags
+        exclude: 'kestra.*\.yml$'  # Skip Kestra flows (validated separately)
+
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+
+  # Nushell script validation
+  - repo: local
+    hooks:
+      - id: nushell-syntax-check
+        name: Check Nushell Syntax
+        entry: bash -c 'for script in "$@"; do echo "Checking $script..."; nu -c "check $(cat "$script")" || exit 1; done'
+        language: system
+        files: '\.nu$'

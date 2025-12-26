@@ -37,6 +37,9 @@ tasks:
     description: Build feedback message for AI retry
     taskRunner:
       type: io.kestra.plugin.core.runner.Process
+    store: true  # ← Store feedback file, not in execution context
+    outputFiles:
+      - "/tmp/feedback.txt"
     commands:
       - |
         nu -c '
@@ -62,10 +65,12 @@ tasks:
 
         # Save and output feedback
         $feedback | save -f /tmp/feedback.txt
-        print $feedback
+        # Only print summary, not full feedback!
+        print { success: true, feedback_length: ($feedback | str length) } | to json
         '
 
 outputs:
   - id: feedback
     type: STRING
-    value: "{{ read('/tmp/feedback.txt') }}"
+    value: "{{ outputs.collect.outputFiles['/tmp/feedback.txt'] }}"
+    description: URI to stored feedback file (in internal storage)

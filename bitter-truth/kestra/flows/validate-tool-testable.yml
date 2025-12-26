@@ -107,6 +107,9 @@ tasks:
     description: Validate via DataContract + validate.nu
     taskRunner:
       type: io.kestra.plugin.core.runner.Process
+    store: true  # ← CRITICAL: Store validation result, not in execution context
+    outputFiles:
+      - "/tmp/validation-result.json"
     env:
       PATH: "/home/lewis/.local/bin:/usr/local/bin:/usr/bin:/bin"
       HOME: /tmp
@@ -120,11 +123,14 @@ tasks:
         if $dry_run {
           # DRY RUN MODE: Skip validation, return success
           { level: "info", msg: "dry_run=true, skipping validation", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
-          print {
+          let result = {
             success: true,
             data: { valid: true, was_dry_run: true },
             trace_id: "{{ inputs.trace_id }}"
-          } | to json
+          }
+          $result | to json | save -f /tmp/validation-result.json
+          # Only print summary to stdout, not full result!
+          print { success: true, valid: true, trace_id: "{{ inputs.trace_id }}" } | to json
         } else {
           # Call validate.nu with contract
           { level: "info", msg: "Running contract validation", contract: "{{ inputs.contract_path }}", trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
@@ -149,15 +155,18 @@ tasks:
           }
 
           let response = $result.stdout | from json
-          print $response | to json
+          # Save full response to file
+          $response | to json | save -f /tmp/validation-result.json
+          # Only print summary to stdout!
+          print { success: $response.success, valid: ($response.data?.valid? // false), trace_id: "{{ inputs.trace_id }}" } | to json
         }
         '
 
 outputs:
   - id: validation_result
     type: STRING
-    value: "{{ taskrun.outputs.validate.stdout }}"
-    description: JSON response with validation result
+    value: "{{ outputs.validate.outputFiles['/tmp/validation-result.json'] }}"
+    description: URI to stored validation result (in internal storage)
 
   - id: success
     type: BOOLEAN

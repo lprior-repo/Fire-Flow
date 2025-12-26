@@ -112,6 +112,10 @@ tasks:
     taskRunner:
       type: io.kestra.plugin.core.runner.Process
     timeout: PT2M
+    store: true  # ← CRITICAL: Store output files, not in execution context
+    outputFiles:
+      - "{{  inputs.output_path }}"
+      - "{{ inputs.logs_path }}"
     commands:
       - |
         # Write input JSON to temp file (avoids quoting issues)
@@ -144,7 +148,8 @@ tasks:
 
         let response = $exec_result.stdout | from json
         { level: "info", msg: "Tool executed", success: $response.success, trace_id: "{{ inputs.trace_id }}" } | to json -r | print -e
-        print $response | to json
+        # Don't print full response to stdout - it's already in output files!
+        print { success: $response.success, trace_id: "{{ inputs.trace_id }}" } | to json
         '
 
   # STEP 4: VALIDATE OUTPUT FILES CREATED
@@ -178,13 +183,13 @@ tasks:
 outputs:
   - id: output_file
     type: STRING
-    value: "{{ inputs.output_path }}"
-    description: Path to tool output
+    value: "{{ outputs.execute.outputFiles[inputs.output_path] }}"
+    description: URI to stored tool output (in internal storage)
 
   - id: logs_file
     type: STRING
-    value: "{{ inputs.logs_path }}"
-    description: Path to tool logs
+    value: "{{ outputs.execute.outputFiles[inputs.logs_path] }}"
+    description: URI to stored tool logs (in internal storage)
 
   - id: success
     type: BOOLEAN
