@@ -1,123 +1,68 @@
-# Windmill Workspace Configuration
-# Fire-Flow: Contract-driven AI code generation
-#
-# Documentation: https://www.windmill.dev/docs/advanced/cli/sync
-
-# TypeScript runtime (bun is faster, deno is more compatible)
 defaultTs: bun
-
-# ============================================
-# File Filtering
-# ============================================
-
-# Include patterns (glob format)
 includes:
-  - "f/**"  # All flows and scripts in f/ folder
-
-# Exclude patterns
+  - f/**
 excludes:
-  - "**/*.md"           # Documentation files
-  - "**/*.test.*"       # Test files
-  - "**/fixtures/**"    # Test fixtures
-
-# Additional includes (useful for overrides)
+  - '**/*.md'
+  - '**/*.test.*'
+  - '**/fixtures/**'
 extraIncludes: []
-
-# ============================================
-# Skip Flags (what to exclude from sync)
-# ============================================
-
-skipVariables: false      # Include variables in sync
-skipResources: false      # Include resources in sync
-skipResourceTypes: false  # Include resource types
-skipSecrets: true         # SECURITY: Skip secrets by default
-skipScripts: false        # Include scripts
-skipFlows: false          # Include flows
-skipApps: false           # Include apps
-skipFolders: false        # Include folder permissions
-
-# ============================================
-# Include Flags (what to explicitly include)
-# ============================================
-
-includeSchedules: true    # Include cron schedules
-includeTriggers: true     # Include HTTP/WebSocket/Kafka triggers
-includeUsers: false       # Exclude user management
-includeGroups: false      # Exclude group management
-includeSettings: false    # Exclude workspace settings
-includeKey: false         # Exclude encryption key
-
-# ============================================
-# Git Branch Validation
-# ============================================
-
-# Skip validation for feature branches (set true for temporary branches)
+skipVariables: false
+skipResources: false
+skipResourceTypes: false
+skipSecrets: true
+skipScripts: false
+skipFlows: false
+skipApps: false
+skipFolders: false
+includeSchedules: true
+includeTriggers: true
+includeUsers: false
+includeGroups: false
+includeSettings: false
+includeKey: false
 skipBranchValidation: false
-
-# ============================================
-# Git Branch-Specific Configuration
-# ============================================
-
 gitBranches:
-  # Development branch
   main:
-    baseUrl: 'http://localhost:8000/'  # Local Windmill instance
-    workspaceId: dev
+    baseUrl: 'http://localhost:8200/'
+    workspaceId: test
     overrides:
-      skipSecrets: true      # Don't sync secrets in dev
+      skipSecrets: true
       includeSettings: false
     specificItems:
       resources:
-        - "f/fire-flow/dev_*"
+        - f/fire-flow/dev_*
       variables:
-        - "f/fire-flow/debug_*"
-
-  # Staging branch (testing before production)
+        - f/fire-flow/debug_*
   staging:
     baseUrl: 'https://staging.windmill.dev/'
     workspaceId: fire-flow-staging
     overrides:
-      skipSecrets: true      # Secrets managed separately
-      includeSettings: true  # Include workspace settings
+      skipSecrets: true
+      includeSettings: true
     promotionOverrides:
-      skipApps: false        # Include apps during promotion
-      skipFlows: false       # Include flows during promotion
+      skipApps: false
+      skipFlows: false
     specificItems:
       resources:
-        - "f/fire-flow/staging_*"
+        - f/fire-flow/staging_*
       variables:
-        - "f/fire-flow/staging_*"
-
-  # Production branch
+        - f/fire-flow/staging_*
   production:
     baseUrl: 'https://app.windmill.dev/'
     workspaceId: fire-flow-prod
     overrides:
-      skipSecrets: false     # Include secrets (encrypted)
-      includeSettings: true  # Include workspace settings
+      skipSecrets: false
+      includeSettings: true
     promotionOverrides:
-      skipApps: true         # Don't overwrite apps during promotion
+      skipApps: true
     specificItems:
       resources:
-        - "f/fire-flow/prod_*"
+        - f/fire-flow/prod_*
       variables:
-        - "f/fire-flow/prod_*"
-
-  # Common items across all branches
+        - f/fire-flow/prod_*
   commonSpecificItems:
     resources:
-      - "f/fire-flow/config/**"
+      - f/fire-flow/config/**
     variables:
-      - "f/fire-flow/env_*"
-
-# ============================================
-# Codebase Bundling (for TypeScript/JavaScript)
-# ============================================
-
+      - f/fire-flow/env_*
 codebases: []
-# Example:
-# codebases:
-#   - relative_path: './shared-lib'
-#     includes: ['**/*.ts']
-#     excludes: ['**/*.test.ts', '**/node_modules/**']
-#     external: ['lodash', 'axios']

@@ -7,6 +7,13 @@
 # 4. Orchestrator Runs Everything: Windmill owns execution
 #
 # PATTERN: Generate -> Execute -> Validate -> (Pass=Exit | Fail=Feedback->Retry)
+#
+# WINDMILL FEATURES LEVERAGED:
+# - forloopflow: Self-healing retry loop
+# - Step retries: Exponential backoff for transient LLM failures
+# - Error handler: Centralized failure notification
+# - Caching: Skip redundant gate1 checks for identical code
+# - Timeouts: Prevent runaway LLM/execution
 
 summary: Contract-driven code generation with self-healing
 description: |
@@ -65,11 +72,22 @@ value:
           expr: "Array.from({length: flow_input.max_attempts}, (_, i) => i + 1)"
         skip_failures: true
         modules:
-          # Generate code
+          # Generate code (with retries for transient LLM failures)
           - id: generate
             value:
               type: script
               path: f/fire-flow/generate/script
+              # Exponential backoff: 3 retries, delays of 2s, 4s, 8s
+              retry:
+                constant:
+                  attempts: 3
+                  seconds: 2
+                exponential:
+                  attempts: 3
+                  multiplier: 2
+                  seconds: 2
+              # 5 minute timeout for LLM generation
+              timeout: 300
               input_transforms:
                 contract_path:
                   type: javascript
@@ -100,10 +118,13 @@ value:
                   expr: results.init.trace_id
 
           # Gate 1: Syntax Check (Parse + Lint + Type)
+          # Cached for 1 hour - same code = same result
           - id: gate1
             value:
               type: script
               path: f/fire-flow/gate1/script
+              cache_ttl: 3600
+              timeout: 60
               input_transforms:
                 code_path:
                   type: javascript
@@ -134,11 +155,13 @@ value:
               expr: "result.status === 'failed'"
               skip_if_stopped: false
 
-          # Execute generated code
+          # Execute generated code (with timeout to prevent runaway)
           - id: execute
             value:
               type: script
               path: f/fire-flow/execute/script
+              # 2 minute timeout - code should execute fast
+              timeout: 120
               input_transforms:
                 code_path:
                   type: javascript
@@ -250,3 +273,20 @@ value:
           max_attempts:
             type: javascript
             expr: flow_input.max_attempts
+
+  # Error handler - called when any step fails unrecoverably
+  failure_module:
+    id: error_handler
+    value:
+      type: script
+      path: f/fire-flow/error_handler/script
+      input_transforms:
+        error:
+          type: javascript
+          expr: error
+        failed_step:
+          type: javascript
+          expr: error?.step || "unknown"
+        flow_input:
+          type: javascript
+          expr: flow_input

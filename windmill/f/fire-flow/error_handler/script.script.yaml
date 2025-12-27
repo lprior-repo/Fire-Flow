@@ -1,0 +1,15 @@
+summary: Error handler for contract loop
+description: Captures error context for debugging/alerting
+schema:
+  $schema: "https://json-schema.org/draft/2020-12/schema"
+  type: object
+  properties:
+    error:
+      type: object
+      description: The error from the failed step
+    failed_step:
+      type: string
+      description: Name of the step that failed
+    flow_input:
+      type: object
+      description: Original flow inputs for context
