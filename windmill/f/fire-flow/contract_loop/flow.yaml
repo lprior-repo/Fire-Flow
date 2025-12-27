@@ -54,22 +54,20 @@ value:
     - id: init
       value:
         type: rawscript
-        language: python3
+        language: deno
         content: |
-          import uuid
-          import os
+          export async function main() {
+            const traceId = crypto.randomUUID().slice(0, 8);
+            const workDir = `/tmp/fire-flow-${traceId}`;
+            await Deno.mkdir(workDir, { recursive: true });
 
-          def main():
-              trace_id = str(uuid.uuid4())[:8]
-              work_dir = f"/tmp/fire-flow-{trace_id}"
-              os.makedirs(work_dir, exist_ok=True)
-
-              return {
-                  "trace_id": trace_id,
-                  "work_dir": work_dir,
-                  "attempt": 0,
-                  "feedback": "Initial generation"
-              }
+            return {
+              trace_id: traceId,
+              work_dir: workDir,
+              attempt: 0,
+              feedback: "Initial generation"
+            };
+          }
 
     # Main retry loop (using Windmill's for-loop)
     - id: retry_loop
@@ -137,12 +135,14 @@ value:
           - id: check_gate1
             value:
               type: rawscript
-              language: python3
+              language: deno
               content: |
-                def main(passed: bool, errors: list):
-                    if passed:
-                        return {"status": "passed", "errors": []}
-                    return {"status": "failed", "errors": errors}
+                export function main(passed: boolean, errors: string[]) {
+                  if (passed) {
+                    return { status: "passed", errors: [] };
+                  }
+                  return { status: "failed", errors };
+                }
               input_transforms:
                 passed:
                   type: javascript
@@ -205,18 +205,20 @@ value:
           - id: check_valid
             value:
               type: rawscript
-              language: python3
+              language: deno
               content: |
-                def main(valid: bool, iter_value: int, output_path: str):
-                    if valid:
-                        # Success! Return and stop the loop
-                        return {
-                            "status": "success",
-                            "attempts": iter_value,
-                            "output_path": output_path
-                        }
-                    # Not valid, continue to feedback
-                    return {"status": "retry_needed", "attempts": iter_value}
+                export function main(valid: boolean, iter_value: number, output_path: string) {
+                  if (valid) {
+                    // Success! Return and stop the loop
+                    return {
+                      status: "success",
+                      attempts: iter_value,
+                      output_path: output_path
+                    };
+                  }
+                  // Not valid, continue to feedback
+                  return { status: "retry_needed", attempts: iter_value };
+                }
               input_transforms:
                 valid:
                   type: javascript
@@ -260,15 +262,16 @@ value:
           - id: update_state
             value:
               type: rawscript
-              language: python3
+              language: deno
               content: |
-                def main(feedback: str, iter_value: int):
-                    # Return updated state for next iteration
-                    return {
-                        "updated": True,
-                        "feedback": feedback,
-                        "attempt": iter_value
-                    }
+                export function main(feedback: string, iter_value: number) {
+                  // Return updated state for next iteration
+                  return {
+                    updated: true,
+                    feedback: feedback,
+                    attempt: iter_value
+                  };
+                }
               input_transforms:
                 feedback:
                   type: javascript
@@ -281,26 +284,29 @@ value:
     - id: final_result
       value:
         type: rawscript
-        language: python3
+        language: deno
         content: |
-          def main(loop_result, max_attempts: int):
-              # Check if we succeeded
-              if isinstance(loop_result, list) and len(loop_result) > 0:
-                  last = loop_result[-1]
-                  if last.get("check_valid", {}).get("status") == "success":
-                      return {
-                          "status": "success",
-                          "attempts": last["check_valid"]["attempts"],
-                          "output_path": last["check_valid"]["output_path"],
-                          "message": "Contract satisfied!"
-                      }
-
-              # Escalation - max attempts exceeded
-              return {
-                  "status": "escalated",
-                  "attempts": max_attempts,
-                  "message": "AI failed to satisfy contract. FIX THE PROMPT OR CONTRACT, NOT THE CODE."
+          export function main(loop_result: any[], max_attempts: number) {
+            // Check if we succeeded
+            if (Array.isArray(loop_result) && loop_result.length > 0) {
+              const last = loop_result[loop_result.length - 1];
+              if (last?.check_valid?.status === "success") {
+                return {
+                  status: "success",
+                  attempts: last.check_valid.attempts,
+                  output_path: last.check_valid.output_path,
+                  message: "Contract satisfied!"
+                };
               }
+            }
+
+            // Escalation - max attempts exceeded
+            return {
+              status: "escalated",
+              attempts: max_attempts,
+              message: "AI failed to satisfy contract. FIX THE PROMPT OR CONTRACT, NOT THE CODE."
+            };
+          }
         input_transforms:
           loop_result:
             type: javascript
