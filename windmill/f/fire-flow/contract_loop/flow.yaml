@@ -53,21 +53,8 @@ value:
     # Initialize workspace
     - id: init
       value:
-        type: rawscript
-        language: deno
-        content: |
-          export async function main() {
-            const traceId = crypto.randomUUID().slice(0, 8);
-            const workDir = `/tmp/fire-flow-${traceId}`;
-            await Deno.mkdir(workDir, { recursive: true });
-
-            return {
-              trace_id: traceId,
-              work_dir: workDir,
-              attempt: 0,
-              feedback: "Initial generation"
-            };
-          }
+        type: script
+        path: f/fire-flow/init/script
 
     # Main retry loop (using Windmill's for-loop)
     - id: retry_loop
@@ -134,15 +121,8 @@ value:
           # Check Gate 1 result - skip to feedback if failed
           - id: check_gate1
             value:
-              type: rawscript
-              language: deno
-              content: |
-                export function main(passed: boolean, errors: string[]) {
-                  if (passed) {
-                    return { status: "passed", errors: [] };
-                  }
-                  return { status: "failed", errors };
-                }
+              type: script
+              path: f/fire-flow/check_gate1/script
               input_transforms:
                 passed:
                   type: javascript
@@ -204,21 +184,8 @@ value:
           # Check if valid - break loop on success
           - id: check_valid
             value:
-              type: rawscript
-              language: deno
-              content: |
-                export function main(valid: boolean, iter_value: number, output_path: string) {
-                  if (valid) {
-                    // Success! Return and stop the loop
-                    return {
-                      status: "success",
-                      attempts: iter_value,
-                      output_path: output_path
-                    };
-                  }
-                  // Not valid, continue to feedback
-                  return { status: "retry_needed", attempts: iter_value };
-                }
+              type: script
+              path: f/fire-flow/check_valid/script
               input_transforms:
                 valid:
                   type: javascript
@@ -261,17 +228,8 @@ value:
           # Update state for next iteration
           - id: update_state
             value:
-              type: rawscript
-              language: deno
-              content: |
-                export function main(feedback: string, iter_value: number) {
-                  // Return updated state for next iteration
-                  return {
-                    updated: true,
-                    feedback: feedback,
-                    attempt: iter_value
-                  };
-                }
+              type: script
+              path: f/fire-flow/update_state/script
               input_transforms:
                 feedback:
                   type: javascript
@@ -283,30 +241,8 @@ value:
     # Final result (after loop completes or breaks)
     - id: final_result
       value:
-        type: rawscript
-        language: deno
-        content: |
-          export function main(loop_result: any[], max_attempts: number) {
-            // Check if we succeeded
-            if (Array.isArray(loop_result) && loop_result.length > 0) {
-              const last = loop_result[loop_result.length - 1];
-              if (last?.check_valid?.status === "success") {
-                return {
-                  status: "success",
-                  attempts: last.check_valid.attempts,
-                  output_path: last.check_valid.output_path,
-                  message: "Contract satisfied!"
-                };
-              }
-            }
-
-            // Escalation - max attempts exceeded
-            return {
-              status: "escalated",
-              attempts: max_attempts,
-              message: "AI failed to satisfy contract. FIX THE PROMPT OR CONTRACT, NOT THE CODE."
-            };
-          }
+        type: script
+        path: f/fire-flow/final_result/script
         input_transforms:
           loop_result:
             type: javascript
