@@ -1,0 +1,14 @@
+[package]
+name = "bt-validate"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "validate"
+path = "src/main.rs"
+
+[dependencies]
+bt-core = { path = "../../bt-core" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true

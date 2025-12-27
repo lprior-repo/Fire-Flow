@@ -1,0 +1,20 @@
+[package]
+name = "bt-generate"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "generate"
+path = "src/main.rs"
+
+[dependencies]
+bt-core = { path = "../../bt-core" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clap.workspace = true
+regex.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+yaml-rust.workspace = true
+uuid = { version = "1.0", features = ["v4"] }

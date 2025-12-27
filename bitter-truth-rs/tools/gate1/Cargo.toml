@@ -1,0 +1,16 @@
+[package]
+name = "bt-gate1"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "gate1"
+path = "src/main.rs"
+
+[dependencies]
+bt-core = { path = "../../bt-core" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clap.workspace = true
+regex.workspace = true
