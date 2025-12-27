@@ -10,14 +10,8 @@
 //! ```
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
-
-#[derive(Deserialize)]
-pub struct FinalResultInput {
-    pub loop_result: Vec<Value>,
-    pub max_attempts: u32,
-}
 
 #[derive(Serialize)]
 pub struct FinalResultOutput {
@@ -28,10 +22,12 @@ pub struct FinalResultOutput {
     pub message: String,
 }
 
-pub fn main(input: FinalResultInput) -> Result<FinalResultOutput> {
+pub fn main(loop_result: Vec<Value>, max_attempts: Option<u32>) -> Result<FinalResultOutput> {
+    let max_attempts = max_attempts.unwrap_or(5);
+
     // Check if we succeeded
-    if !input.loop_result.is_empty() {
-        if let Some(last) = input.loop_result.last() {
+    if !loop_result.is_empty() {
+        if let Some(last) = loop_result.last() {
             if let Some(check_valid) = last.get("check_valid") {
                 if check_valid.get("status").and_then(|s| s.as_str()) == Some("success") {
                     let attempts = check_valid
@@ -57,7 +53,7 @@ pub fn main(input: FinalResultInput) -> Result<FinalResultOutput> {
     // Escalation - max attempts exceeded
     Ok(FinalResultOutput {
         status: "escalated".to_string(),
-        attempts: input.max_attempts,
+        attempts: max_attempts,
         output_path: None,
         message: "AI failed to satisfy contract. FIX THE PROMPT OR CONTRACT, NOT THE CODE."
             .to_string(),
