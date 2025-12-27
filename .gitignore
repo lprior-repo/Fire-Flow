@@ -210,6 +210,11 @@ target/
 Cargo.lock
 **/Cargo.lock
 
+# Python virtual environments
+.venv/
+venv/
+env/
+
 # Swift
 *.build/
 DerivedData/
@@ -260,3 +265,16 @@ wp-config-local.php
 
 # Local-only assets and backups (not version controlled)
 .local/
+
+# Git setup and helper scripts (local environment only)
+.git-wrapper.sh
+.gitconfig.fireflow
+setup-git-protection.sh
+GIT_PROTECTION.md
+
+# Lock files (environment-specific)
+uv.lock
+
+# Local windmill integration scripts
+windmill/f/fire-flow/mem0_integration/
+IMPLEMENTATION_COMPLETE.md
