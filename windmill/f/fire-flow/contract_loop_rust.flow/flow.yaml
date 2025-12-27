@@ -1,0 +1,183 @@
+summary: Contract-driven code generation with Rust tools
+description: Generates code from DataContract using Rust-based pipeline, validates, and returns results
+
+schema:
+  type: object
+  properties:
+    contract_path:
+      type: string
+      description: Path to DataContract YAML file
+    task:
+      type: string
+      description: Natural language task description
+    language:
+      type: string
+      default: rust
+      description: Target language
+    model:
+      type: string
+      default: anthropic/claude-opus-4-5
+      description: LLM model
+
+value:
+  modules:
+    - id: generate
+      summary: Generate code with bt-generate
+      value:
+        type: rawscript
+        language: bash
+        content: |
+          #!/bin/bash
+          CONTRACT_PATH="$1"
+          TASK="$2"
+          LANGUAGE="$3"
+          MODEL="$4"
+          OUTPUT_PATH="/tmp/generated_${RANDOM}.rs"
+          TRACE_ID=$(uuidgen | cut -c1-8)
+
+          JSON_INPUT=$(jq -n \
+            --arg contract "$CONTRACT_PATH" \
+            --arg task "$TASK" \
+            --arg lang "$LANGUAGE" \
+            --arg model "$MODEL" \
+            --arg out "$OUTPUT_PATH" \
+            --arg trace "$TRACE_ID" \
+            '{
+              contract_path: $contract,
+              task: $task,
+              language: $lang,
+              model: $model,
+              output_path: $out,
+              context: {
+                trace_id: $trace,
+                dry_run: false
+              }
+            }')
+
+          echo "$JSON_INPUT" | /home/lewis/src/Fire-Flow/bitter-truth-rs/target/release/generate | jq '{
+            generated: .data.generated,
+            output_path: .data.output_path,
+            language: .data.language,
+            duration_ms: .duration_ms,
+            trace_id: .trace_id
+          }'
+        input_transforms:
+          contract_path:
+            type: javascript
+            expr: flow_input.contract_path
+          task:
+            type: javascript
+            expr: flow_input.task
+          language:
+            type: javascript
+            expr: flow_input.language || "rust"
+          model:
+            type: javascript
+            expr: flow_input.model || "anthropic/claude-opus-4-5"
+
+    - id: extract_code
+      summary: Extract clean code from generated file
+      value:
+        type: rawscript
+        language: bash
+        content: |
+          #!/bin/bash
+          INPUT_FILE="$1"
+          OUTPUT_FILE="${INPUT_FILE%.rs}_clean.rs"
+
+          # Remove markdown fences
+          sed '1s/^```.*$//' "$INPUT_FILE" | sed '$s/^```$//' > "$OUTPUT_FILE"
+
+          jq -n --arg path "$OUTPUT_FILE" \
+            --arg input "$INPUT_FILE" \
+            '{cleaned_path: $path, original_path: $input, success: true}'
+        input_transforms:
+          generated_path:
+            type: javascript
+            expr: results.generate.output_path
+
+    - id: validate
+      summary: Validate code with gate1
+      value:
+        type: rawscript
+        language: bash
+        content: |
+          #!/bin/bash
+          CODE_PATH="$1"
+          LANGUAGE="$2"
+          TRACE_ID="$3"
+
+          JSON_INPUT=$(jq -n \
+            --arg code "$CODE_PATH" \
+            --arg lang "$LANGUAGE" \
+            --arg trace "$TRACE_ID" \
+            '{
+              code_path: $code,
+              language: $lang,
+              context: {
+                trace_id: $trace,
+                dry_run: false
+              }
+            }')
+
+          echo "$JSON_INPUT" | /home/lewis/src/Fire-Flow/bitter-truth-rs/target/release/gate1 | jq '{
+            passed: .data.passed,
+            syntax_ok: .data.syntax_ok,
+            lint_ok: .data.lint_ok,
+            type_ok: .data.type_ok,
+            errors: .data.errors,
+            duration_ms: .duration_ms
+          }'
+        input_transforms:
+          code_path:
+            type: javascript
+            expr: results.extract_code.cleaned_path
+          language:
+            type: javascript
+            expr: flow_input.language || "rust"
+          trace_id:
+            type: javascript
+            expr: results.generate.trace_id
+
+    - id: final_result
+      summary: Return final result
+      value:
+        type: rawscript
+        language: bash
+        content: |
+          #!/bin/bash
+          jq -n \
+            --argjson generate "$1" \
+            --argjson validate "$2" \
+            '{
+              success: ($validate.passed),
+              generation: $generate,
+              validation: $validate,
+              code_path: $generate.output_path,
+              timestamp: (now | todate)
+            }'
+        input_transforms:
+          generate_result:
+            type: javascript
+            expr: JSON.stringify(results.generate)
+          validate_result:
+            type: javascript
+            expr: JSON.stringify(results.validate)
+
+  failure_module:
+    id: error_handler
+    value:
+      type: rawscript
+      language: bash
+      content: |
+        #!/bin/bash
+        echo "Flow failed at step: $1"
+        echo "Error: $2"
+        exit 1
+      input_transforms:
+        step:
+          type: javascript
+          expr: error.step_id || "unknown"
+        message:
+          type: javascript
+          expr: error.message || "Unknown error"
