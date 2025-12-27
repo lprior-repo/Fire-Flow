@@ -1,0 +1,230 @@
+# Windmill Validation CI/CD Pipeline
+# Validates and deploys Windmill scripts/flows on push
+#
+# Triggers:
+#   - Push to main/staging branches (auto-deploy)
+#   - Pull requests (validation only)
+#   - Manual dispatch
+
+name: Windmill Validate & Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+    paths:
+      - 'windmill/**'
+      - '.github/workflows/windmill-validate.yml'
+  pull_request:
+    paths:
+      - 'windmill/**'
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy to Windmill'
+        required: false
+        default: false
+        type: boolean
+      workspace:
+        description: 'Target workspace'
+        required: false
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+
+env:
+  WMILL_VERSION: '1.393.3'
+  NODE_VERSION: '20'
+
+jobs:
+  validate:
+    name: Validate Windmill Assets
+    runs-on: ubuntu-latest
+    
+    outputs:
+      scripts_valid: ${{ steps.validate-scripts.outputs.valid }}
+      flows_valid: ${{ steps.validate-flows.outputs.valid }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Windmill CLI
+        run: npm install -g windmill-cli@${{ env.WMILL_VERSION }}
+
+      - name: Verify CLI Installation
+        run: wmill --version
+
+      - name: Validate Script Metadata
+        id: validate-scripts
+        working-directory: windmill
+        run: |
+          echo "::group::Validating script metadata"
+          if wmill script generate-metadata; then
+            echo "valid=true" >> $GITHUB_OUTPUT
+            echo "Script metadata validation passed"
+          else
+            echo "valid=false" >> $GITHUB_OUTPUT
+            echo "::error::Script metadata validation failed"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+      - name: Validate Flow Lockfiles
+        id: validate-flows
+        working-directory: windmill
+        run: |
+          echo "::group::Validating flow lockfiles"
+          if wmill flow generate-locks; then
+            echo "valid=true" >> $GITHUB_OUTPUT
+            echo "Flow lockfile validation passed"
+          else
+            echo "valid=false" >> $GITHUB_OUTPUT
+            echo "::error::Flow lockfile validation failed"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+      - name: Check for Generated Changes
+        id: check-changes
+        run: |
+          if git diff --quiet windmill/; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected after validation"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "::warning::Validation generated changes - lockfiles may be outdated"
+            git diff --stat windmill/
+          fi
+
+      - name: Upload Validation Artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-errors
+          path: |
+            windmill/**/*.lock
+            windmill/**/*.script.yaml
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: validate
+    if: |
+      github.event_name == 'push' && 
+      github.ref == 'refs/heads/staging' &&
+      needs.validate.outputs.scripts_valid == 'true' &&
+      needs.validate.outputs.flows_valid == 'true'
+    
+    environment: staging
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Windmill CLI
+        run: npm install -g windmill-cli@${{ env.WMILL_VERSION }}
+
+      - name: Deploy to Staging
+        working-directory: windmill
+        env:
+          WMILL_TOKEN: ${{ secrets.WMILL_TOKEN_STAGING }}
+          WMILL_WORKSPACE: ${{ secrets.WMILL_WORKSPACE_STAGING }}
+          WMILL_URL: ${{ secrets.WMILL_URL_STAGING }}
+        run: |
+          echo "::group::Deploying to staging"
+          wmill sync push --yes \
+            --skip-secrets \
+            --workspace "$WMILL_WORKSPACE" \
+            --token "$WMILL_TOKEN" \
+            --base-url "$WMILL_URL"
+          echo "::endgroup::"
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: validate
+    if: |
+      github.event_name == 'push' && 
+      github.ref == 'refs/heads/main' &&
+      needs.validate.outputs.scripts_valid == 'true' &&
+      needs.validate.outputs.flows_valid == 'true'
+    
+    environment: production
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Windmill CLI
+        run: npm install -g windmill-cli@${{ env.WMILL_VERSION }}
+
+      - name: Deploy to Production
+        working-directory: windmill
+        env:
+          WMILL_TOKEN: ${{ secrets.WMILL_TOKEN_PROD }}
+          WMILL_WORKSPACE: ${{ secrets.WMILL_WORKSPACE_PROD }}
+          WMILL_URL: ${{ secrets.WMILL_URL_PROD }}
+        run: |
+          echo "::group::Deploying to production"
+          wmill sync push --yes \
+            --skip-variables \
+            --skip-secrets \
+            --skip-resources \
+            --workspace "$WMILL_WORKSPACE" \
+            --token "$WMILL_TOKEN" \
+            --base-url "$WMILL_URL"
+          echo "::endgroup::"
+
+  manual-deploy:
+    name: Manual Deployment
+    runs-on: ubuntu-latest
+    needs: validate
+    if: |
+      github.event_name == 'workflow_dispatch' && 
+      github.event.inputs.deploy == 'true'
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Windmill CLI
+        run: npm install -g windmill-cli@${{ env.WMILL_VERSION }}
+
+      - name: Deploy to Selected Workspace
+        working-directory: windmill
+        env:
+          WMILL_TOKEN: ${{ secrets[format('WMILL_TOKEN_{0}', github.event.inputs.workspace)] }}
+          WMILL_WORKSPACE: ${{ secrets[format('WMILL_WORKSPACE_{0}', github.event.inputs.workspace)] }}
+          WMILL_URL: ${{ secrets[format('WMILL_URL_{0}', github.event.inputs.workspace)] }}
+        run: |
+          echo "Deploying to workspace: ${{ github.event.inputs.workspace }}"
+          wmill sync push --yes \
+            --skip-secrets \
+            --workspace "$WMILL_WORKSPACE" \
+            --token "$WMILL_TOKEN" \
+            --base-url "$WMILL_URL"

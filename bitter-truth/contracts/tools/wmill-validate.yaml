@@ -1,0 +1,178 @@
+dataContractSpecification: 0.9.3
+id: wmill-validate
+info:
+  title: Windmill Validation Tool Contract
+  version: 1.0.0
+  description: |
+    Validates Windmill workspace assets (scripts, flows, apps) using the wmill CLI.
+    Integrates with Fire-Flow's bitter-truth validation pipeline.
+    
+    Validation includes:
+    - Script metadata generation and validation
+    - Flow lockfile generation and validation
+    - Sync push simulation (--show-diffs)
+    
+  owner: Fire-Flow
+  contact:
+    name: Fire-Flow Team
+    url: https://github.com/your-org/fire-flow
+
+# Input schema
+models:
+  WmillValidateInput:
+    description: Input for Windmill validation
+    type: object
+    fields:
+      - name: context
+        type: object
+        description: Execution context
+        fields:
+          - name: trace_id
+            type: string
+            description: Trace ID for observability
+          - name: dry_run
+            type: boolean
+            description: Skip actual validation
+            default: false
+      - name: workspace_dir
+        type: string
+        description: Path to windmill workspace directory
+        default: "windmill"
+      - name: validate_scripts
+        type: boolean
+        description: Run script metadata validation
+        default: true
+      - name: validate_flows
+        type: boolean
+        description: Run flow lockfile validation
+        default: true
+      - name: check_only
+        type: boolean
+        description: Check mode - validate without pushing
+        default: true
+      - name: workspace
+        type: string
+        description: Target Windmill workspace name
+        required: false
+      - name: base_url
+        type: string
+        description: Windmill instance base URL
+        required: false
+
+  WmillValidateOutput:
+    description: Output from Windmill validation
+    type: object
+    fields:
+      - name: success
+        type: boolean
+        description: Overall validation success
+        required: true
+      - name: scripts
+        type: object
+        description: Script validation results
+        fields:
+          - name: passed
+            type: integer
+            description: Number of scripts passed
+          - name: failed
+            type: integer
+            description: Number of scripts failed
+          - name: errors
+            type: array
+            items:
+              type: string
+            description: Script validation errors
+      - name: flows
+        type: object
+        description: Flow validation results
+        fields:
+          - name: passed
+            type: integer
+            description: Number of flows passed
+          - name: failed
+            type: integer
+            description: Number of flows failed
+          - name: errors
+            type: array
+            items:
+              type: string
+            description: Flow validation errors
+      - name: has_uncommitted_changes
+        type: boolean
+        description: Whether validation generated uncommitted changes
+      - name: duration_ms
+        type: integer
+        description: Validation duration in milliseconds
+      - name: trace_id
+        type: string
+        description: Trace ID for correlation
+      - name: error
+        type: string
+        description: Error message if validation failed
+        required: false
+
+# Quality checks
+quality:
+  type: SodaCL
+  specification:
+    checks for WmillValidateOutput:
+      - success is not null
+      - scripts.passed >= 0
+      - scripts.failed >= 0
+      - flows.passed >= 0
+      - flows.failed >= 0
+      - duration_ms >= 0
+
+# Server configuration for testing
+servers:
+  local:
+    type: local
+    path: bitter-truth/tests/outputs/wmill-validate-output.json
+    format: json
+
+# Examples for testing
+examples:
+  - type: WmillValidateInput
+    description: Basic validation
+    data:
+      context:
+        trace_id: "test-123"
+        dry_run: false
+      workspace_dir: "windmill"
+      validate_scripts: true
+      validate_flows: true
+      check_only: true
+
+  - type: WmillValidateOutput
+    description: Successful validation
+    data:
+      success: true
+      scripts:
+        passed: 4
+        failed: 0
+        errors: []
+      flows:
+        passed: 1
+        failed: 0
+        errors: []
+      has_uncommitted_changes: false
+      duration_ms: 1234
+      trace_id: "test-123"
+
+  - type: WmillValidateOutput
+    description: Failed validation
+    data:
+      success: false
+      scripts:
+        passed: 3
+        failed: 1
+        errors:
+          - "f/fire-flow/broken/script.rs: Failed to parse dependencies"
+      flows:
+        passed: 1
+        failed: 0
+        errors: []
+      has_uncommitted_changes: true
+      duration_ms: 2345
+      trace_id: "test-456"
+      error: "Script validation failed"

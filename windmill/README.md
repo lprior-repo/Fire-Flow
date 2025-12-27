@@ -166,6 +166,62 @@ let result = client.run_flow("f/fire-flow/flows/contract_loop", json!({
 - `opencode` or LLM API - for code generation
 - Windmill instance - orchestration
 
+## Validation
+
+The Fire-Flow project includes a validation tool for Windmill assets.
+
+### Local Validation
+
+```bash
+# Validate all (scripts + flows)
+nu tools/wmill-validate.nu --check
+
+# Validate scripts only
+nu tools/wmill-validate.nu --scripts-only --check
+
+# Validate flows only
+nu tools/wmill-validate.nu --flows-only --check
+
+# CI mode (outputs JSON)
+nu tools/wmill-validate.nu --ci --check
+
+# Show workspace info
+nu tools/wmill-validate.nu info
+```
+
+### CI/CD Pipeline
+
+The project includes a GitHub Actions workflow (`.github/workflows/windmill-validate.yml`) that:
+
+1. **Validates** script metadata and flow lockfiles on every push/PR
+2. **Deploys to staging** on push to `staging` branch
+3. **Deploys to production** on push to `main` branch
+4. **Manual deployment** via workflow dispatch
+
+Required GitHub Secrets:
+- `WMILL_TOKEN_STAGING`, `WMILL_TOKEN_PROD` - API tokens
+- `WMILL_WORKSPACE_STAGING`, `WMILL_WORKSPACE_PROD` - Workspace names
+- `WMILL_URL_STAGING`, `WMILL_URL_PROD` - Windmill instance URLs
+
+### Validation Commands
+
+The wmill CLI validation is based on:
+
+```bash
+# Validate script metadata (type annotations, schema)
+wmill script generate-metadata
+
+# Validate flow lockfiles (dependencies)
+wmill flow generate-locks
+
+# Check what would be synced
+wmill sync push --show-diffs
+```
+
+### DataContract Validation
+
+For contract-driven validation, see `bitter-truth/contracts/tools/wmill-validate.yaml`.
+
 ## Migration from Nushell
 
 | Old (Nushell) | New (Rust) |
@@ -174,3 +230,41 @@ let result = client.run_flow("f/fire-flow/flows/contract_loop", json!({
 | `run-tool.nu` | `scripts/execute.rs` |
 | `validate.nu` | `scripts/validate.rs` |
 | Kestra YAML | `flows/contract_loop.yaml` |
+
+## Directory Structure
+
+```
+windmill/
+├── f/
+│   └── fire-flow/                 # Namespace folder
+│       ├── collect_feedback/      # Feedback collection script
+│       ├── contract_loop/         # Main orchestration flow
+│       ├── execute/               # Code execution script
+│       ├── generate/              # AI code generation script
+│       └── validate/              # Contract validation script
+├── wmill.yaml                     # Workspace configuration
+├── wmill-lock.yaml               # Dependency lockfile
+└── README.md                     # This file
+```
+
+## wmill.yaml Configuration
+
+The `wmill.yaml` file configures multi-environment deployments:
+
+```yaml
+# Development defaults
+defaultTs: bun
+includes:
+  - f/**
+
+# Branch-specific settings
+gitBranches:
+  main:
+    skip:
+      - variables
+      - secrets
+      - resources
+  staging:
+    skip:
+      - secrets
+```
