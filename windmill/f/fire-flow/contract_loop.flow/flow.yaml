@@ -1,0 +1,201 @@
+summary: Contract-driven code generation with self-healing
+description: Generates code from a DataContract, executes it, validates output, and retries with feedback on failure. Escalates after max attempts.
+
+schema:
+  type: object
+  properties:
+    contract_path:
+      type: string
+      description: "Path to DataContract YAML file"
+    task:
+      type: string
+      description: "Natural language task description"
+    language:
+      type: string
+      default: "rust"
+      description: "Target language (rust, python, typescript, go)"
+    dry_run:
+      type: boolean
+      default: false
+      description: "Skip actual generation/execution"
+    max_attempts:
+      type: integer
+      default: 5
+      description: "Maximum retry attempts before escalation"
+    model:
+      type: string
+      default: "anthropic/claude-sonnet-4-20250514"
+      description: "LLM model for generation"
+
+value:
+  modules:
+    - id: init
+      summary: Initialize workspace and trace
+      value:
+        type: script
+        path: f/fire-flow/init
+        input_transforms:
+          task:
+            type: javascript
+            expr: "flow_input.task"
+          trace_context:
+            type: static
+            value: "{}"
+
+    - id: generate
+      summary: Generate code from contract
+      value:
+        type: script
+        path: f/fire-flow/generate
+        input_transforms:
+          contract_path:
+            type: javascript
+            expr: "flow_input.contract_path"
+          task:
+            type: javascript
+            expr: "flow_input.task"
+          language:
+            type: javascript
+            expr: "flow_input.language"
+          model:
+            type: javascript
+            expr: "flow_input.model"
+          dry_run:
+            type: javascript
+            expr: "flow_input.dry_run"
+          output_path:
+            type: javascript
+            expr: "'/tmp/generated_' + Date.now() + '.' + (flow_input.language === 'rust' ? 'rs' : flow_input.language === 'python' ? 'py' : 'ts')"
+          feedback:
+            type: static
+            value: "Initial generation"
+          attempt:
+            type: static
+            value: "1/5"
+          timeout_seconds:
+            type: static
+            value: "300"
+          trace_id:
+            type: javascript
+            expr: "results.init.trace_id || ''"
+      retry:
+        exponential:
+          attempts: 3
+          multiplier: 2
+          seconds: 2
+      timeout: 300
+      cache_ttl: 3600
+
+    - id: gate1
+      summary: Validate syntax and types
+      value:
+        type: script
+        path: f/fire-flow/gate1
+        input_transforms:
+          code_path:
+            type: javascript
+            expr: "results.generate.output_path"
+          language:
+            type: javascript
+            expr: "flow_input.language"
+          trace_id:
+            type: javascript
+            expr: "results.init.trace_id || ''"
+      timeout: 60
+
+    - id: check_gate1
+      summary: Check gate1 validation results
+      value:
+        type: script
+        path: f/fire-flow/check_gate1
+        input_transforms:
+          gate_result:
+            type: javascript
+            expr: "results.gate1"
+      skip_if:
+        expr: "flow_input.dry_run"
+
+    - id: execute
+      summary: Execute generated code
+      value:
+        type: script
+        path: f/fire-flow/execute
+        input_transforms:
+          code_path:
+            type: javascript
+            expr: "results.generate.output_path"
+          language:
+            type: javascript
+            expr: "flow_input.language"
+          trace_id:
+            type: javascript
+            expr: "results.init.trace_id || ''"
+      timeout: 120
+      skip_if:
+        expr: "results.check_gate1?.should_continue === false"
+
+    - id: validate
+      summary: Validate output against contract
+      value:
+        type: script
+        path: f/fire-flow/validate
+        input_transforms:
+          contract_path:
+            type: javascript
+            expr: "flow_input.contract_path"
+          output_path:
+            type: javascript
+            expr: "results.execute.output_path"
+          server:
+            type: static
+            value: "local"
+          trace_id:
+            type: javascript
+            expr: "results.init.trace_id || ''"
+          dry_run:
+            type: javascript
+            expr: "flow_input.dry_run"
+      skip_if:
+        expr: "flow_input.dry_run || results.execute?.success === false"
+
+    - id: check_valid
+      summary: Check validation results
+      value:
+        type: script
+        path: f/fire-flow/check_valid
+        input_transforms:
+          validation_result:
+            type: javascript
+            expr: "results.validate"
+      skip_if:
+        expr: "flow_input.dry_run"
+
+    - id: final_result
+      summary: Return final result or escalation
+      value:
+        type: script
+        path: f/fire-flow/final_result
+        input_transforms:
+          loop_result:
+            type: javascript
+            expr: "[]"
+          max_attempts:
+            type: javascript
+            expr: "flow_input.max_attempts"
+      continue_on_error: true
+
+  failure_module:
+    id: error_handler
+    value:
+      type: script
+      path: f/fire-flow/error_handler
+      input_transforms:
+        error:
+          type: javascript
+          expr: "error"
+        failed_step:
+          type: javascript
+          expr: "error?.step_id || 'unknown'"
+        flow_input:
+          type: javascript
+          expr: "flow_input"

@@ -7,14 +7,12 @@
 //! anyhow = "1.0"
 //! serde = { version = "1.0", features = ["derive"] }
 //! serde_json = "1.0"
-//! tokio = { version = "1", features = ["process", "fs"] }
 //! ```
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use std::process::Stdio;
-use tokio::io::AsyncWriteExt;
-use tokio::process::Command;
+use std::process::{Command, Stdio};
+use std::io::Write;
 
 #[derive(Deserialize)]
 pub struct GenerateInput {
@@ -137,10 +135,8 @@ OUTPUT ONLY THE CODE:"#,
     )
 }
 
-/// Call the LLM to generate code
-async fn call_llm(prompt: &str, model: &str, timeout_secs: u64) -> Result<String> {
-    // Use opencode CLI or direct API
-    // For now, using opencode as it's already set up
+/// Call the LLM to generate code (synchronous)
+fn call_llm(prompt: &str, model: &str, timeout_secs: u64) -> Result<String> {
     let mut child = Command::new("timeout")
         .args([
             "--foreground",
@@ -157,10 +153,10 @@ async fn call_llm(prompt: &str, model: &str, timeout_secs: u64) -> Result<String
         .spawn()?;
 
     if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(prompt.as_bytes()).await?;
+        stdin.write_all(prompt.as_bytes())?;
     }
 
-    let output = child.wait_with_output().await?;
+    let output = child.wait_with_output()?;
 
     if output.status.code() == Some(124) {
         return Err(anyhow!("LLM generation timed out"));
@@ -195,12 +191,12 @@ fn extract_code(raw: &str, language: &str) -> String {
     raw.trim().to_string()
 }
 
-pub async fn main(input: GenerateInput) -> Result<GenerateOutput> {
+pub fn main(input: GenerateInput) -> Result<GenerateOutput> {
     eprintln!("[generate] Starting generation for {}", input.task);
     eprintln!("[generate] Language: {}, Model: {}", input.language, input.model);
 
     // Validate contract exists
-    if !tokio::fs::try_exists(&input.contract_path).await.unwrap_or(false) {
+    if !std::path::Path::new(&input.contract_path).exists() {
         return Err(anyhow!("Contract not found: {}", input.contract_path));
     }
 
@@ -213,7 +209,7 @@ pub async fn main(input: GenerateInput) -> Result<GenerateOutput> {
             "typescript" => "export function main() { return { dryRun: true }; }",
             _ => "// dry run stub",
         };
-        tokio::fs::write(&input.output_path, stub).await?;
+        std::fs::write(&input.output_path, stub)?;
         return Ok(GenerateOutput {
             generated: true,
             output_path: input.output_path,
@@ -223,7 +219,7 @@ pub async fn main(input: GenerateInput) -> Result<GenerateOutput> {
     }
 
     // Read contract
-    let contract_content = tokio::fs::read_to_string(&input.contract_path).await?;
+    let contract_content = std::fs::read_to_string(&input.contract_path)?;
     eprintln!("[generate] Contract loaded ({} bytes)", contract_content.len());
 
     // Build prompt
@@ -232,7 +228,7 @@ pub async fn main(input: GenerateInput) -> Result<GenerateOutput> {
 
     // Call LLM
     eprintln!("[generate] Calling {} with {}s timeout", input.model, input.timeout_seconds);
-    let raw_output = call_llm(&prompt, &input.model, input.timeout_seconds).await?;
+    let raw_output = call_llm(&prompt, &input.model, input.timeout_seconds)?;
     eprintln!("[generate] LLM returned {} chars", raw_output.len());
 
     // Extract code
@@ -244,7 +240,7 @@ pub async fn main(input: GenerateInput) -> Result<GenerateOutput> {
     }
 
     // Write to output path
-    tokio::fs::write(&input.output_path, &code).await?;
+    std::fs::write(&input.output_path, &code)?;
     eprintln!("[generate] Written to {}", input.output_path);
 
     Ok(GenerateOutput {

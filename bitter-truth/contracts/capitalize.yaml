@@ -1,0 +1,23 @@
+dataContractSpecification: "0.9.3"
+id: capitalize
+info:
+  title: "String Capitalization Function"
+  version: 1.0.0
+  description: "Capitalizes the first letter of a string"
+servers:
+  local:
+    path: /tmp/capitalize_output.json
+models:
+  input:
+    columns:
+      - name: text
+        type: string
+        description: "Text to capitalize"
+  output:
+    columns:
+      - name: result
+        type: string
+        description: "Capitalized text"
+      - name: original_length
+        type: integer
+        description: "Length of original text"

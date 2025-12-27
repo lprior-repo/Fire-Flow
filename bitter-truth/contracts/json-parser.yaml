@@ -1,0 +1,29 @@
+dataContractSpecification: "0.9.3"
+id: json-parser
+info:
+  title: "JSON Parser"
+  version: 1.0.0
+  description: "Parses JSON string and extracts fields"
+servers:
+  local:
+    path: /tmp/json_parser_output.json
+models:
+  input:
+    columns:
+      - name: json_string
+        type: string
+        description: "JSON string to parse"
+      - name: field_path
+        type: string
+        description: "Dot-notation path to extract (e.g., 'user.email')"
+  output:
+    columns:
+      - name: success
+        type: boolean
+        description: "Whether parsing succeeded"
+      - name: value
+        type: string
+        description: "Extracted value as string"
+      - name: error_message
+        type: string
+        description: "Error message if parsing failed"

@@ -8,13 +8,11 @@
 //! serde = { version = "1.0", features = ["derive"] }
 //! serde_json = "1.0"
 //! serde_yaml = "0.9"
-//! tokio = { version = "1", features = ["process", "fs"] }
 //! ```
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use std::process::Stdio;
-use tokio::process::Command;
+use std::process::{Command, Stdio};
 
 #[derive(Deserialize)]
 pub struct ValidateInput {
@@ -43,8 +41,8 @@ pub struct ValidateOutput {
 }
 
 /// Extract the expected data path from contract's servers section
-async fn get_contract_data_path(contract_path: &str, server: &str) -> Result<String> {
-    let content = tokio::fs::read_to_string(contract_path).await?;
+fn get_contract_data_path(contract_path: &str, server: &str) -> Result<String> {
+    let content = std::fs::read_to_string(contract_path)?;
     let yaml: serde_yaml::Value = serde_yaml::from_str(&content)?;
 
     yaml.get("servers")
@@ -55,13 +53,13 @@ async fn get_contract_data_path(contract_path: &str, server: &str) -> Result<Str
         .ok_or_else(|| anyhow!("Contract missing servers.{}.path", server))
 }
 
-pub async fn main(input: ValidateInput) -> Result<ValidateOutput> {
+pub fn main(input: ValidateInput) -> Result<ValidateOutput> {
     eprintln!("[validate] Starting validation");
     eprintln!("[validate] Contract: {}", input.contract_path);
     eprintln!("[validate] Output: {}", input.output_path);
 
     // Validate files exist
-    if !tokio::fs::try_exists(&input.contract_path).await.unwrap_or(false) {
+    if !std::path::Path::new(&input.contract_path).exists() {
         return Err(anyhow!("Contract not found: {}", input.contract_path));
     }
 
@@ -75,18 +73,18 @@ pub async fn main(input: ValidateInput) -> Result<ValidateOutput> {
         });
     }
 
-    if !tokio::fs::try_exists(&input.output_path).await.unwrap_or(false) {
+    if !std::path::Path::new(&input.output_path).exists() {
         return Err(anyhow!("Output file not found: {}", input.output_path));
     }
 
     // Get expected path from contract
-    let contract_expected_path = get_contract_data_path(&input.contract_path, &input.server).await?;
+    let contract_expected_path = get_contract_data_path(&input.contract_path, &input.server)?;
     eprintln!("[validate] Contract expects data at: {}", contract_expected_path);
 
     // Copy output to expected location if different
     if input.output_path != contract_expected_path {
         eprintln!("[validate] Copying {} -> {}", input.output_path, contract_expected_path);
-        tokio::fs::copy(&input.output_path, &contract_expected_path).await?;
+        std::fs::copy(&input.output_path, &contract_expected_path)?;
     }
 
     // Run datacontract test
@@ -95,8 +93,7 @@ pub async fn main(input: ValidateInput) -> Result<ValidateOutput> {
         .args(["test", "--server", &input.server, &input.contract_path])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output()
-        .await?;
+        .output()?;
 
     let exit_code = result.status.code().unwrap_or(1);
     let stdout = String::from_utf8_lossy(&result.stdout);

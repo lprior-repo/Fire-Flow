@@ -1,0 +1,35 @@
+dataContractSpecification: "0.9.3"
+id: data-filter
+info:
+  title: "Data Filter and Sorter"
+  version: 1.0.0
+  description: "Filters and sorts array of objects by a field"
+servers:
+  local:
+    path: /tmp/data_filter_output.json
+models:
+  input:
+    columns:
+      - name: data
+        type: string
+        description: "JSON array of objects as string"
+      - name: filter_field
+        type: string
+        description: "Field name to filter by"
+      - name: filter_value
+        type: string
+        description: "Value to filter for"
+      - name: sort_field
+        type: string
+        description: "Field name to sort by"
+  output:
+    columns:
+      - name: filtered_count
+        type: integer
+        description: "Number of items that matched filter"
+      - name: sorted_json
+        type: string
+        description: "Filtered and sorted data as JSON"
+      - name: sample_first
+        type: string
+        description: "First item from result as JSON"
