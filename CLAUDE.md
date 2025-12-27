@@ -4,11 +4,25 @@
 
 **CRITICAL**: Never echo, print, or display credentials in plaintext. Always use secure methods.
 
-## Windmill Configuration
+### Token Security Best Practices
+
+1. **Never commit tokens to git**: Tokens are stored in `~/.config/windmill/remotes.ndjson` (local only, not tracked)
+2. **Use environment variables for CI/CD**: Set `WINDMILL_TOKEN` env var instead of hardcoding
+3. **Rotate tokens regularly**: Generate new tokens and update configuration
+4. **Store in password manager**: Keep a backup in your system's secure credential storage:
+   - **macOS**: `security add-generic-password -s windmill-test -a $(whoami) -w <TOKEN>`
+   - **Linux**: Use `pass`, `1password`, `bitwarden`, or similar
+   - **Windows**: Use Credential Manager or similar
+
+5. **Token scope**: Only create tokens with necessary scopes (scripts:read/write, flows:read/write)
+
+### Windmill Configuration
 
 - **URL**: http://localhost:8200
 - **CLI**: `wmill` - Windmill CLI for sync and deploy
 - **Namespace**: `f/fire-flow`
+- **Service Management**: Managed via `systemctl` (systemd service at `/etc/systemd/system/windmill.service`)
+- **Token Location**: `~/.config/windmill/remotes.ndjson` (local, never commit)
 
 ## bitter-truth System
 
@@ -44,6 +58,23 @@ Generate -> Gate -> Pass or Self-Heal -> Escalate after N failures
 - `wmill` - Windmill CLI
 - Windmill (running on :8200) - orchestration
 
+### Windmill Service Management
+
+```bash
+# Check service status
+sudo systemctl status windmill
+
+# Restart Windmill (after updates or configuration changes)
+sudo systemctl restart windmill
+
+# View logs
+sudo journalctl -u windmill -f
+
+# Stop/start service
+sudo systemctl stop windmill
+sudo systemctl start windmill
+```
+
 ### Windmill Commands
 
 ```bash
@@ -55,7 +86,28 @@ wmill flow push ./f/fire-flow/contract_loop f/fire-flow/contract_loop
 
 # Pull remote to local
 wmill sync pull
+
+# Run a script
+wmill script run f/fire-flow/init
 ```
+
+### Setting Up Token in Password Manager
+
+**Store the Windmill token securely:**
+
+```bash
+# Linux (using pass)
+pass insert windmill/test-token
+# Then paste: cCkzLeuvlxzjYW8PUIJEcjPMUeJDS49E
+
+# Retrieve when needed
+pass windmill/test-token
+
+# Or use environment variable for CI/CD
+export WINDMILL_TOKEN=$(pass windmill/test-token)
+```
+
+For macOS/Windows, use your system's credential manager (Keychain, Credential Manager, etc.)
 
 ## Using bv as an AI sidecar
 
