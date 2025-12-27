@@ -6,7 +6,7 @@
 
 ## Windmill Configuration
 
-- **URL**: http://localhost:8000
+- **URL**: http://localhost:8200
 - **CLI**: `wmill` - Windmill CLI for sync and deploy
 - **Namespace**: `f/fire-flow`
 
@@ -42,7 +42,7 @@ Generate -> Gate -> Pass or Self-Heal -> Escalate after N failures
 - `opencode` - AI code generation
 - `datacontract` - contract validation
 - `wmill` - Windmill CLI
-- Windmill (running on :8000) - orchestration
+- Windmill (running on :8200) - orchestration
 
 ### Windmill Commands
 
@@ -98,8 +98,40 @@ bv --robot-next          # Minimal: just the single top pick + claim command
 **History & Change Tracking:**
 | Command | Returns |
 |---------|---------|
-| `--robot-history` | Bead-to-commit correlations |
-| `--robot-diff --diff-since <ref>` | Changes since ref |
+| `--robot-history` | Bead-to-commit correlations: `stats`, `histories`, `commit_index` |
+| `--robot-diff --diff-since <ref>` | Changes since ref: new/closed/modified issues, cycles |
+
+**Other Commands:**
+| Command | Returns |
+|---------|---------|
+| `--robot-burndown <sprint>` | Sprint burndown, scope changes, at-risk items |
+| `--robot-forecast <id\|all>` | ETA predictions with dependency-aware scheduling |
+| `--robot-alerts` | Stale issues, blocking cascades, priority mismatches |
+| `--robot-suggest` | Hygiene: duplicates, missing deps, label suggestions |
+| `--robot-graph [--graph-format=json\|dot\|mermaid]` | Dependency graph export |
+| `--export-graph <file.html>` | Self-contained interactive HTML visualization |
+
+### Scoping & Filtering
+
+```bash
+bv --robot-plan --label backend              # Scope to label's subgraph
+bv --robot-insights --as-of HEAD~30          # Historical point-in-time
+bv --recipe actionable --robot-plan          # Pre-filter: ready to work (no blockers)
+bv --recipe high-impact --robot-triage       # Pre-filter: top PageRank scores
+bv --robot-triage --robot-triage-by-track    # Group by parallel work streams
+bv --robot-triage --robot-triage-by-label    # Group by domain
+```
+
+### Understanding Robot Output
+
+**All robot JSON includes:**
+- `data_hash` — Fingerprint of source beads.jsonl (verify consistency)
+- `status` — Per-metric state: `computed|approx|timeout|skipped` + elapsed ms
+- `as_of` / `as_of_commit` — Present when using `--as-of`
+
+**Two-phase analysis:**
+- **Phase 1 (instant):** degree, topo sort, density
+- **Phase 2 (async, 500ms timeout):** PageRank, betweenness, HITS, eigenvector, cycles
 
 ### jq Quick Reference
 
