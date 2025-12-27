@@ -1,6 +1,6 @@
 ---
 name: fire-flow-orchestration
-description: Manages Fire-Flow's contract-driven AI code generation using bitter-truth, Kestra, Nushell, OpenCode, Beads, and MCP servers (mem0, Graphiti, Codanna). Use for code generation, validation, orchestration, task tracking, and documentation lookup.
+description: Manages Fire-Flow's contract-driven AI code generation using bitter-truth, Windmill, Rust, OpenCode, Beads, and MCP servers (mem0, Graphiti, Codanna). Use for code generation, validation, orchestration, task tracking, and documentation lookup.
 ---
 
 # Fire-Flow Agent Operations Guide
@@ -8,11 +8,11 @@ description: Manages Fire-Flow's contract-driven AI code generation using bitter
 ## Quick Navigation
 
 - [Complete Codebase Index](#complete-codebase-index)
-- [Core Systems](#core-systems)
-- [bitter-truth 4 Laws](#bitter-truth-4-laws)
-- [Tool Selection](#tool-selection)
-- [Kestra Best Practices](#kestra-best-practices)
-- [MCP Servers](#mcp-servers)
+ - [Core Systems](#core-systems)
+ - [bitter-truth 4 Laws](#bitter-truth-4-laws)
+ - [Tool Selection](#tool-selection)
+ - [Windmill Best Practices](#windmill-best-practices)
+ - [MCP Servers](#mcp-servers)
 - [Codanna Usage](#codanna-usage)
 - [Validation](#validation)
 - [Quick Reference](#quick-reference)
@@ -36,9 +36,8 @@ Fire-Flow/
 
 **Search Patterns**:
 - **bitter-truth contracts**: `bitter-truth/contracts/`
-- **Nushell validation**: `docs/files/LANG_NUSHELL.md`
-- **Kestra flows**: `bitter-truth/kestra/flows/`
-- **Kestra API**: `docs/kestra-openapi.yaml` (161 endpoints)
+- **Rust validation**: `docs/files/LANG_RUST.md`
+- **Windmill flows**: `windmill/f/fire-flow/`
 - **Code patterns**: Use `codanna_semantic_search_with_context()`
 - **Dependencies**: Use `codanna_analyze_impact()`
 
@@ -49,31 +48,28 @@ Fire-Flow/
 - `CORE.md` - AI code validator prime directive
 - `SHORTCUTS.md` - Shortcut taxonomy (S001-S030)
 - `LANG_*.md` - Language-specific validation guides
-  - `LANG_NUSHELL.md` - Nushell (NU001-NU010)
-  - `LANG_KESTRA.md` - Kestra (KE001-KE010)
-  - `LANG_RUST.md` - Rust
+  - `LANG_RUST.md` - Rust (RS001-RS010)
   - `LANG_GO.md` - Go
   - `LANG_GLEAM.md` - Gleam/BEAM
 - `0*-8-*.md` - Project planning documents
 
 **bitter-truth**:
 - `LAWS.md` - The 4 Laws
-- `ARCHITECTURE.md` - Kestra/Nushell separation
+- `ARCHITECTURE.md` - Windmill/Rust separation
 - `contracts/` - Humans write (Law 3)
 - `tools/` - AI writes (Law 1)
-  - `generate.nu` - AI code generation
-  - `validate.nu` - Contract validation
-  - `run-tool.nu` - Tool execution
-- `kestra/flows/` - Kestra orchestrates (Law 4)
-
-**Kestra**:
-- `docs/kestra-docs/INDEX.md` - Full documentation
-- `docs/kestra-openapi.yaml` - **Complete OpenAPI spec (161 endpoints)**
+  - `generate.nu` - AI code generation (legacy)
+  - `validate.nu` - Contract validation (legacy)
+- `bitter-truth-rs/` - Rust tools
+  - `generate` - AI code generation
+  - `gate1` - Syntax/type validation
+  - `validate` - DataContract validation
+- `windmill/f/fire-flow/` - Windmill orchestrates (Law 4)
 
 **Tools**:
-- `tools/kestra-ws/` - Rust WebSocket client for Kestra
+- `tools/kestra-ws/` - Rust WebSocket client for Kestra (legacy)
 - `tools/llm-cleaner/` - Rust LLM output cleaner
-- `tools/kestra.nu` - Nushell helper
+- `bitter-truth-rs/` - Rust tools for generation and validation
 
 **Codanna Index**: 117 symbols, 222 relationships, semantic search enabled
 - Key indexed: `tools/kestra-ws/src/lib.rs`, `tools/llm-cleaner/src/main.rs`
@@ -85,38 +81,40 @@ Fire-Flow/
 ### bitter-truth
 **Purpose**: Contract-driven AI code generation with draconian validation.
 
-**Architecture**: Human → Contract → Kestra → OpenCode → Nushell → Validation
+**Architecture**: Human → Contract → Windmill → OpenCode → Rust → Validation
 
 **Key Files**:
 - Contracts: `bitter-truth/contracts/` - Humans write (Law 3)
-- Tools: `bitter-truth/tools/` - AI writes (Law 1)
-- Flows: `bitter-truth/kestra/flows/` - Kestra orchestrates (Law 4)
+- Rust Tools: `bitter-truth-rs/` - AI writes (Law 1)
+  - `generate` - AI code generation
+  - `gate1` - Syntax/type validation
+  - `validate` - DataContract validation
+- Flows: `windmill/f/fire-flow/` - Windmill orchestrates (Law 4)
 - Laws: `bitter-truth/LAWS.md`
 - Architecture: `bitter-truth/ARCHITECTURE.md`
 
-### Kestra
+### Windmill
 **Purpose**: Workflow orchestration - owns loops, retries, state, decisions.
 
-**Base**: `http://localhost:4201` | **Namespace**: `main`
+**Workspace**: `fire-flow` (local) | **Base**: `http://localhost:8200/`
 
-**Complete OpenAPI Spec**: `docs/kestra-openapi.yaml` (161 endpoints)
-
-**Key API**:
+**Key API** (via MCP or direct):
 ```
-GET  /api/v1/main/flows/{namespace}/{id}
-PUT  /api/v1/main/flows/{namespace}/{id}
-POST /api/v1/main/executions/{namespace}/{flowId}
-GET  /api/v1/main/executions/{executionId}/logs
+GET  /api/w/{workspace}/f/{path}/flow.yaml
+PUT  /api/w/{workspace}/f/{path}/flow.yaml
+POST /api/w/{workspace}/jobs/create/{path}
+GET  /api/w/{workspace}/jobs/{id}
 ```
 
-**Key Components**:
-- `tools/kestra-ws/` - Rust client for log streaming and execution monitoring
-- Format functions (`format_xml`) - AI-friendly log formatting
-- Credential providers (`EnvProvider`, `PassProvider`) - Secure credential retrieval
+**Key Flows**:
+- `contract_loop.flow` - Full CI/CD with self-healing
+- `contract_loop_rust.flow` - Rust-based pipeline
+- `mem0_integration.flow` - Memory management
+- Component scripts: `generate`, `validate`, `execute`, `gate1`
 
 **Documentation**:
-- Official: `docs/kestra-docs/INDEX.md`
-- OpenAPI spec: `docs/kestra-openapi.yaml` - Complete API reference
+- Windmill docs: `docs/windmill/`
+- Flow definitions: `windmill/f/fire-flow/*/flow.yaml`
 
 ### OpenCode Multi-Agent System
 **Location**: `~/.opencode`
@@ -133,7 +131,7 @@ GET  /api/v1/main/executions/{executionId}/logs
 ## bitter-truth 4 Laws
 
 ### Law 1: No-Human Zone
-**Rule**: Humans never write Nushell scripts. AI generates all `.nu` files.
+**Rule**: Humans never write Rust code. AI generates all `.rs` files.
 
 ### Law 2: Contract is Law
 **Rule**: DataContract validation must be draconian. Only safeguard since AI writes all logic.
@@ -160,75 +158,77 @@ Human: "I need X with Y constraints"
 ```
 
 ### Law 4: Orchestrator Runs Everything
-**Rule**: Kestra owns execution. Nothing runs outside orchestration.
+**Rule**: Windmill owns execution. Nothing runs outside orchestration.
 
 - No ad-hoc scripts in production
 - Every execution is tracked, timed, retried
-- Kestra is single source of truth
+- Windmill is single source of truth
 
 **Full Documentation**: `bitter-truth/LAWS.md`, `bitter-truth/ARCHITECTURE.md`
 
 ## Tool Selection
 
 ### When to Use bitter-truth
-- Nushell tool generation from contracts
+- Rust tool generation from contracts
 - Contract validation enforcement
 - Self-healing workflows (up to 5 attempts)
 
-**Pattern**: Contract → Kestra → AI → Nushell → Validation
+**Pattern**: Contract → Windmill → AI → Rust → Validation
 
 ### When to Use OpenCode
 - Complex code generation requiring specialized knowledge
-- Multi-language projects (Go, Rust, Gleam, Nushell)
+- Multi-language projects (Go, Rust, Gleam, Python, TypeScript)
 - Architecture reviews and refactoring
 - Testing strategies and QA planning
 
 **Invocation**: `opencode run -m <model> "<prompt>"` | List models: `opencode models`
 
-### When to Use Kestra
+### When to Use Windmill
 - Orchestrating multi-step workflows
 - Managing retries and error handling
 - Parallel task execution
 - Scheduled or event-triggered workflows
 
-### When to Use Nushell
-- Structured data processing
-- Business logic in tools
+### When to Use Rust
+- Type-safe code generation
+- Performance-critical tools
+- Complex business logic
+- Systems programming
 
-**Patterns**: See `docs/files/LANG_NUSHELL.md`
+**Patterns**: See `docs/files/LANG_RUST.md`
 
-## Kestra Best Practices
+## Windmill Best Practices
 
-### Workflow Design
-- Use explicit namespaces (hierarchical by domain)
+### Flow Design
+- Use hierarchical paths (`f/fire-flow/contract_loop`)
 - Add descriptions in flow metadata
-- Use descriptive IDs (`extract_orders`, not `task1`)
-- Timeouts on long tasks - Prevent hanging
+- Use descriptive IDs (`generate`, `validate`, `execute`)
+- Timeouts on long tasks - Prevent hanging workflows
 - Retry external calls (HTTP, DB, API) with exponential backoff
-- Parallel independent tasks - Use `Parallel` for concurrent execution
-- Handle errors properly - Add `errors` section
+- Parallel independent tasks - Run concurrently
+- Handle errors properly - Add failure modules
 
 ### Security
-- Never hardcode secrets - Always use `secret('KEY_NAME')`
-- Sensitive values not in `variables` block
-- Least privilege - Use scoped secrets
+- Never hardcode secrets - Use Windmill resources or variables
+- Sensitive values not in flow YAML
+- Least privilege - Use scoped resource access
 
 ### Configuration
-- Environment variables via `vars:` - Reference as `{{ vars.name }}`
-- Secrets via `secret()` - Never expose in logs
-- Namespace files - Use `namespaceFiles.enabled: true`
-- Container images - Specify `containerImage` for reproducibility
+- Environment variables via Windmill variables
+- Secrets via Windmill resources (encrypted)
+- Workspace files - Use `workspaceFiles.enabled: true`
+- Container images - Specify for reproducibility
 
 ### Triggers
 - Schedules need `timezone` - Always specify explicitly
-- Flow triggers need `conditions` - Filter by namespace, status
+- Flow triggers need conditions - Filter by workspace
 - Avoid polling - Prefer triggers over scheduled polling
 
 ### Output Management
-- Fetch outputs - Set `fetch: true` or `store: true`
-- Reference outputs - Use `outputs.taskId.property`
+- Fetch outputs - Reference outputs from previous modules
 - Input files - Use `inputFiles:` mapping
 - Output files - Use `outputFiles:` for artifacts
+- Return structured JSON for downstream flows
 
 ## MCP Servers
 
@@ -255,10 +255,9 @@ mem0_delete_memories(memory_ids=["id1"])
 
 **Operations**:
 ```python
-graphiti_add_memory(name="Architecture", episode_body='{"components": ["Kestra"]}', source="json")
-graphiti_search_nodes(query="Kestra workflow", max_nodes=10)
-graphiti_search_memory_facts(query="validation failures", max_facts=10)
-graphiti_analyze_impact(symbol_name="format_xml", max_depth=3)
+# Graphiti
+graphiti_add_memory(name="Decision", episode_body='{"decision": "Use Windmill"}', source="json")
+graphiti_search_nodes(query="Windmill workflow", max_nodes=10)
 ```
 
 **When to Use**:
@@ -275,7 +274,7 @@ graphiti_analyze_impact(symbol_name="format_xml", max_depth=3)
 **Key Operations**:
 ```python
 # Semantic search with context
-codanna_semantic_search_with_context(query="Kestra workflow automation", limit=5, lang="rust")
+codanna_semantic_search_with_context(query="Windmill workflow automation", limit=5, lang="rust")
 
 # Search symbols by name
 codanna_find_symbol(name="format_xml")
@@ -313,7 +312,7 @@ codanna_find_symbol(name="format_xml")
 codanna_search_symbols(query="orchestrator", limit=10)
 
 # Search by intent
-codanna_semantic_search_with_context(query="Kestra WebSocket client", limit=5)
+codanna_semantic_search_with_context(query="Windmill workflow automation", limit=5)
 
 # Search language-specific
 codanna_search_symbols(query="workflow", lang="rust", limit=10)
@@ -371,13 +370,13 @@ P7: Quality          → Non-blocking suggestions
 
 ### Language-Specific Validation
 
-**Nushell** (`docs/files/LANG_NUSHELL.md`): NU001-NU010
+**Rust** (`docs/files/LANG_RUST.md`): RS001-RS010
 - Common shortcuts and hallucinations
-- Validation checklist for structured data, interpolation, error handling
+- Validation checklist for type safety, error handling, ownership
 
-**Kestra** (`docs/files/LANG_KESTRA.md`): KE001-KE010
+**Windmill** (`docs/files/LANG_WINDMILL.md`): WI001-WI010
 - Workflow anti-patterns and hallucinations
-- Validation checklist for flows, tasks, triggers, templates
+- Validation checklist for flows, modules, triggers, schedules
 
 ## Vibe Kanban & AI Workflow Management
 
@@ -432,7 +431,7 @@ Vibe Kanban Board
     ├─ Card 1: Backend (Cursor)
     ├─ Card 2: Frontend (Claude Code)
     ├─ Card 3: Tests (bitter-truth)
-    └─ Card 4: Deployment (Kestra)
+    └─ Card 4: Deployment (Windmill)
          ↓ (parallel execution)
 All agents work simultaneously
          ↓ (merge PRs)
@@ -450,20 +449,20 @@ Deployment
 **Small Team → Medium Team (5-10x)**
 - Vibe Kanban with agent routing rules
 - Multiple specialized agents (backend, frontend, testing)
-- Kestra cluster for parallel execution
+- Windmill workspace for parallel execution
 - Automated quality gates
 
 **Medium Team → Large Team (10-20x)**
 - Vibe Kanban enterprise features
 - Agent pool with load balancing
-- Kestra multi-environment (dev/staging/prod)
+- Windmill multi-environment (dev/staging/prod)
 - Codanna for semantic code search across teams
 - Beads for cross-team dependency tracking
 
 **Large Team → Enterprise (20-50x)**
 - Custom Vibe Kanban instances with integrations
 - Multi-agent coordination with specialized roles
-- Kestra distributed execution
+- Windmill distributed execution
 - Centralized mem0/Graphiti knowledge graph
 - Automated documentation generation
 - Real-time observability and alerting
@@ -491,12 +490,12 @@ Deployment
 └─────────────────────────────────────────────────────────────┘
                           │
                           ↓
-    ┌─────────────────────────────────┐
-    │  Vibe Kanban (Visual)      │
-    │  - Task tracking           │
-    │  - Agent coordination       │
-    │  - Git integration         │
-    └─────────────────────────────────┘
+     ┌─────────────────────────────────┐
+     │  Vibe Kanban (Visual)      │
+     │  - Task tracking           │
+     │  - Agent coordination       │
+     │  - Git integration         │
+     └─────────────────────────────────┘
                     │
         ┌───────────┴───────────┐
         │                     │
@@ -504,7 +503,7 @@ Deployment
    ┌────────┐          ┌──────────┐
    │ Cursor  │          │ bitter-   │
    │ (Local  │          │ truth     │
-   │  LLM)   │          │ + Kestra  │
+   │  LLM)   │          │ + Windmill│
    └─────────┘          └───────────┘
         │                     │
         └───────────┬─────────┘
@@ -522,25 +521,25 @@ Deployment
 **Phase 1: Single Developer** (Week 1-2)
 - Local Cursor + Vibe Kanban setup
 - bitter-truth contract templates
-- Basic Kestra flows
+- Basic Windmill flows
 - Beads for task tracking
 
 **Phase 2: Small Team** (Month 1)
 - Shared Vibe Kanban instance
 - Team bitter-truth contract library
-- Kestra cluster setup
+- Windmill workspace setup
 - Codanna indexing team codebase
 
 **Phase 3: Medium Team** (Month 2-3)
 - Vibe Kanban agent routing rules
 - Multi-agent coordination
-- Distributed Kestra execution
+- Distributed Windmill execution
 - Automated quality gates
 
 **Phase 4: Large Team** (Month 4-6)
 - Enterprise Vibe Kanban features
 - Load-balanced agent pool
-- Multi-environment Kestra
+- Multi-environment Windmill
 - Centralized knowledge graph
 
 **Phase 5: Enterprise** (Month 6-12)
@@ -556,52 +555,44 @@ Deployment
 # Validate contract
 datacontract lint bitter-truth/contracts/tools/echo.yaml
 
-# Run tool
-echo '{"message": "hello"}' | nu bitter-truth/tools/echo.nu
+# Run Rust tool
+echo '{"message": "hello"}' | /home/lewis/src/Fire-Flow/bitter-truth-rs/target/release/validate
 
 # Test contract locally
 datacontract test --server local bitter-truth/contracts/tools/echo.yaml
 ```
 
-### Kestra Commands
+### Windmill Commands
 ```bash
-# Deploy flow
-curl -X PUT --netrc -H "Content-Type: application/x-yaml" \
-  --data-binary '@flow.yml' \
-  'http://localhost:4201/api/v1/main/flows/bitter/contract-loop'
+# Deploy flow (via wmill CLI)
+wmill push flow windmill/f/fire-flow/contract_loop.flow
 
 # Trigger execution
-curl -X POST --netrc \
-  -F contract="/path/to/contract.yaml" \
-  -F task="Create echo tool" \
-  'http://localhost:4201/api/v1/main/executions/bitter/contract-loop'
+wmill job run f/fire-flow/contract_loop --json \
+  '{"contract_path": "/path/to/contract.yaml", "task": "Create echo tool"}'
 
-# Monitor with kestra-ws
-kestra-ws poll --execution-id {id} --format json
-kestra-ws watch --namespace bitter
+# Monitor execution
+wmill job show <job-id>
 ```
 
-### Nushell Patterns
-```nu
-# Read JSON from stdin
-let input = open --raw /dev/stdin | from json
+### Rust Patterns
+```rust
+// JSON input via stdin
+let input: Input = serde_json::from_reader(std::io::stdin())?;
 
-# Output JSON to stdout
-{ success: true, data: $result } | to json | print
+// JSON output via stdout
+let response = Response { success: true, data: result };
+println!("{}", serde_json::to_string(&response)?);
 
-# Log JSON to stderr
-{ level: "info", msg: "processing" } | to json -r | print -e
+// Structured logging to stderr
+eprintln!("{}", serde_json::to_string(&Log { level: "info", msg: "processing" })?);
 
-# Error handling with try/catch
-let content = try { open $path } catch {
-  error make { msg: $"Failed to open ($path)" }
-}
+// Error handling with Result
+let content = std::fs::read_to_string(path)
+    .map_err(|e| Error::IoError(format!("Failed to open {}: {}", path, e)))?;
 
-# Optional access
-open data.json | get config.setting? | default "fallback"
-
-# Structured data (don't parse strings)
-ls | where type == "file" | get name
+// Optional access
+let setting = data.config.as_ref().unwrap_or(&"fallback".to_string());
 ```
 
 ### OpenCode Commands
@@ -649,12 +640,12 @@ codanna_analyze_impact(symbol_name="ExecutionWatcher")
 1. Check `timeout_seconds` context parameter
 2. Verify model is responding: `opencode models`
 
-### Kestra Issues
+### Windmill Issues
 
 **Flow won't deploy**:
 1. Check YAML syntax
-2. Verify `id` and `namespace` are unique
-3. Check credentials in `~/.netrc`
+2. Verify flow path is unique in workspace
+3. Check credentials in Windmill settings
 
 **Execution stuck in RUNNING**:
 1. Check execution logs
@@ -680,25 +671,25 @@ codanna_analyze_impact(symbol_name="ExecutionWatcher")
 1. Write clear contracts with specific inputs, outputs, validation rules
 2. Use dry-run mode first: `dry_run: true`
 3. Review self-healing feedback
-4. Follow 4 Laws - never manually edit Nushell
-5. Monitor executions with Kestra UI or `kestra-ws`
+4. Follow 4 Laws - never manually edit Rust
+5. Monitor executions with Windmill UI
 
-### Kestra
-1. Use secrets - Never hardcode credentials, use `secret('KEY')`
+### Windmill
+1. Use resources/variables - Never hardcode credentials
 2. Add timeouts - Prevent hanging with `timeout` on long tasks
 3. Configure retries - Add `retry` for external calls
-4. Use Parallel - Run independent tasks in parallel
-5. Handle errors - Add `errors` section
+4. Run independent tasks in parallel
+5. Handle errors - Add failure modules
 
-### Nushell
-1. Use structured data operations, not string parsing
-2. Add type annotations to custom commands
-3. Use `try`/`catch` around fallible operations
-4. Use optional access `?` for potentially missing fields
+### Rust
+1. Use type-safe operations, not string parsing
+2. Add proper error handling with `Result`
+3. Use `?` operator for error propagation
+4. Use `Option` for potentially missing values
 5. Log structured JSON for debugging
 
 ### Agent Coordination
-1. Use appropriate tools: bitter-truth for Nushell, OpenCode for complex tasks
+1. Use appropriate tools: bitter-truth for Rust, OpenCode for complex tasks
 2. Save to memory (mem0) for preferences and decisions
 3. Search first (Codanna) to find existing code patterns
 4. Track with Beads: `bv --robot-triage`

@@ -1,0 +1,64 @@
+---
+# mem0 Integration Flow
+# Integrates with mem0 for persistent memory management
+
+summary: mem0 Memory Management Integration
+description: Manages persistent memory with mem0 for preferences, decisions, and solutions
+
+schema:
+  type: object
+  properties:
+    action:
+      type: string
+      description: "Action to perform (add, search, list, delete)"
+      enum: [add, search, list, delete]
+    text:
+      type: string
+      description: "Text to add to memory (for add action)"
+    query:
+      type: string
+      description: "Query for search action"
+    memory_ids:
+      type: array
+      items:
+        type: string
+      description: "Memory IDs to delete (for delete action)"
+
+value:
+  modules:
+    - id: mem0_action
+      summary: Execute mem0 action
+      value:
+        type: script
+        path: f/fire-flow/mem0_integration
+        input_transforms:
+          action:
+            type: javascript
+            expr: "flow_input.action"
+          text:
+            type: javascript
+            expr: "flow_input.text"
+          query:
+            type: javascript
+            expr: "flow_input.query"
+          memory_ids:
+            type: javascript
+            expr: "flow_input.memory_ids"
+        timeout: 60
+
+  failure_module:
+    id: error_handler
+    value:
+      type: script
+      path: f/fire-flow/error_handler
+      input_transforms:
+        error:
+          type: javascript
+          expr: "error"
+        failed_step:
+          type: javascript
+          expr: "error?.step_id || 'unknown'"
+        flow_input:
+          type: javascript
+          expr: "flow_input"
+---
