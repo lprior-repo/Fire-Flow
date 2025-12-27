@@ -1,0 +1,78 @@
+dataContractSpecification: 0.9.3
+id: bitter-truth-tool-gate1
+info:
+  title: Gate 1 Validation Contract
+  version: 1.0.0
+  description: |
+    Gate 1: Syntax Check (Parse + Lint + Type)
+
+    First gate in the 10-gate validation pipeline.
+    Binary pass/fail - if any check fails, discard the branch.
+
+    Checks performed:
+    1. Parse/Syntax - Is the code syntactically valid?
+    2. Lint - Does the code follow style guidelines?
+    3. Type - Does the code type-check correctly?
+  owner: fire-flow
+
+servers:
+  local:
+    type: local
+    path: /tmp/gate1-output.json
+    format: json
+
+models:
+  Gate1Input:
+    description: Input for Gate 1 validation
+    type: object
+    fields:
+      context:
+        type: object
+        description: Execution context (trace_id, dry_run, timeout_seconds)
+        required: false
+      code_path:
+        type: string
+        description: Path to the code file to validate
+        required: true
+        minLength: 1
+      language:
+        type: string
+        description: Programming language (rust, python, typescript, go)
+        required: true
+        enum:
+          - rust
+          - rs
+          - python
+          - py
+          - typescript
+          - ts
+          - go
+
+  Gate1Output:
+    description: Output from Gate 1 validation
+    type: object
+    fields:
+      passed:
+        type: boolean
+        description: Whether all checks passed
+        required: true
+      syntax_ok:
+        type: boolean
+        description: Whether syntax check passed
+        required: true
+      lint_ok:
+        type: boolean
+        description: Whether lint check passed
+        required: true
+      type_ok:
+        type: boolean
+        description: Whether type check passed
+        required: true
+      errors:
+        type: array
+        description: List of error messages from failed checks
+        required: true
+      was_dry_run:
+        type: boolean
+        description: Whether this was a dry-run (skipped validation)
+        required: true

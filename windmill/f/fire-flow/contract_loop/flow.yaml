@@ -114,6 +114,46 @@ value:
                   type: javascript
                   expr: results.init.trace_id
 
+          # Gate 1: Syntax Check (Parse + Lint + Type)
+          - id: gate1
+            value:
+              type: script
+              path: f/fire-flow/gate1/script
+              input_transforms:
+                code_path:
+                  type: javascript
+                  expr: results.generate.output_path
+                language:
+                  type: javascript
+                  expr: flow_input.language
+                dry_run:
+                  type: javascript
+                  expr: flow_input.dry_run
+                trace_id:
+                  type: javascript
+                  expr: results.init.trace_id
+
+          # Check Gate 1 result - skip to feedback if failed
+          - id: check_gate1
+            value:
+              type: rawscript
+              language: python3
+              content: |
+                def main(passed: bool, errors: list):
+                    if passed:
+                        return {"status": "passed", "errors": []}
+                    return {"status": "failed", "errors": errors}
+              input_transforms:
+                passed:
+                  type: javascript
+                  expr: results.gate1.passed
+                errors:
+                  type: javascript
+                  expr: results.gate1.errors || []
+            stop_after_if:
+              expr: "result.status === 'failed'"
+              skip_if_stopped: false
+
           # Execute generated code
           - id: execute
             value:
@@ -199,13 +239,16 @@ value:
               input_transforms:
                 output_path:
                   type: javascript
-                  expr: results.execute.output_path
+                  expr: results.execute?.output_path || ""
                 logs_path:
                   type: javascript
-                  expr: results.execute.logs_path
+                  expr: results.execute?.logs_path || ""
                 validation_errors:
                   type: javascript
-                  expr: results.validate.errors
+                  expr: results.validate?.errors || results.check_gate1?.errors || []
+                gate1_errors:
+                  type: javascript
+                  expr: results.gate1?.errors || []
                 attempt:
                   type: javascript
                   expr: "`${iter.value}/${flow_input.max_attempts}`"
