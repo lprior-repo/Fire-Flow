@@ -134,6 +134,61 @@ value:
       skip_if:
         expr: "results.check_gate1?.should_continue === false"
 
+    - id: test_execution
+      summary: Run unit/integration tests
+      value:
+        type: script
+        path: f/fire-flow/test_execution
+        input_transforms:
+          code_path:
+            type: javascript
+            expr: "results.generate.output_path"
+          language:
+            type: javascript
+            expr: "flow_input.language"
+          output_path:
+            type: javascript
+            expr: "'/tmp/test_results_' + Date.now() + '.json'"
+          logs_path:
+            type: javascript
+            expr: "'/tmp/test_logs_' + Date.now() + '.json'"
+          timeout_seconds:
+            type: static
+            value: "120"
+          trace_id:
+            type: javascript
+            expr: "results.init.trace_id || ''"
+          dry_run:
+            type: javascript
+            expr: "flow_input.dry_run"
+      timeout: 150
+      skip_if:
+        expr: "results.execute?.success === false || flow_input.dry_run"
+
+    - id: check_test_execution
+      summary: Check test results
+      value:
+        type: script
+        path: f/fire-flow/check_test_execution
+        input_transforms:
+          success:
+            type: javascript
+            expr: "results.test_execution.success"
+          tests_passed:
+            type: javascript
+            expr: "results.test_execution.tests_passed"
+          tests_failed:
+            type: javascript
+            expr: "results.test_execution.tests_failed"
+          exit_code:
+            type: javascript
+            expr: "results.test_execution.exit_code"
+          iter_value:
+            type: static
+            value: "1"
+      skip_if:
+        expr: "flow_input.dry_run"
+
     - id: validate
       summary: Validate output against contract
       value:
@@ -156,7 +211,7 @@ value:
             type: javascript
             expr: "flow_input.dry_run"
       skip_if:
-        expr: "flow_input.dry_run || results.execute?.success === false"
+        expr: "flow_input.dry_run || results.execute?.success === false || !results.check_test_execution?.should_continue"
 
     - id: check_valid
       summary: Check validation results
