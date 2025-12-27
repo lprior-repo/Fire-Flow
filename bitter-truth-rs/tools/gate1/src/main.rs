@@ -1,7 +1,5 @@
-use anyhow::{anyhow, Result};
 use bt_core::{error_exit, log_stderr, success_exit, Context, LogEntry};
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::io::Read;
 use std::process::Command;
 use std::time::SystemTime;

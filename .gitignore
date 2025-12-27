@@ -204,9 +204,11 @@ target/
 .bundle/
 Gemfile.lock
 
-# Rust
+# Rust (including nested Cargo projects)
 target/
+**/target/
 Cargo.lock
+**/Cargo.lock
 
 # Swift
 *.build/
@@ -252,3 +254,9 @@ wp-config-local.php
 
 # bv (beads viewer) local config and caches
 .bv/
+
+# Codanna AI code intelligence index (build artifact, auto-generated)
+.codanna/
+
+# Local-only assets and backups (not version controlled)
+.local/

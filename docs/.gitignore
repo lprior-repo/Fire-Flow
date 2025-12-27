@@ -1,0 +1,14 @@
+# Images (stored locally for AI access, not version controlled)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+*.ico
+*.bmp
+
+# Image optimized versions
+*.webp.bak
+*.png.bak
+*.jpg.bak

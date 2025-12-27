@@ -1,0 +1,6 @@
+[project]
+name = "fire-flow"
+version = "0.1.0"
+description = "Contract-driven AI code generation orchestration"
+requires-python = ">=3.11"
+dependencies = []
