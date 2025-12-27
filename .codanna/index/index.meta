@@ -3,13 +3,13 @@
   "data_source": {
     "Tantivy": {
       "path": "/home/lewis/src/Fire-Flow/.codanna/index/tantivy",
-      "doc_count": 360,
-      "timestamp": 1766725703
+      "doc_count": 296,
+      "timestamp": 1766798699
     }
   },
-  "symbol_count": 117,
-  "file_count": 3,
-  "last_modified": 1766725703,
+  "symbol_count": 150,
+  "file_count": 11,
+  "last_modified": 1766798699,
   "indexed_paths": [
     "/home/lewis/src/Fire-Flow"
   ]

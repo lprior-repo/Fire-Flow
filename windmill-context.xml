@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<windmill>
+  <instance>
+    <version>CE v1.600.1</version>
+    <url>http://localhost:8200</url>
+    <mode>standalone</mode>
+    <status>systemd user service</status>
+  </instance>
+
+  <authentication>
+    <method>Bearer token from pass</method>
+    <pass_path>windmill/api-token</pass_path>
+    <helper_script>wm-api</helper_script>
+    <default_user>admin@windmill.dev</default_user>
+  </authentication>
+
+  <api>
+    <base_url>http://localhost:8200</base_url>
+    <examples>
+      <example name="version">wm-api GET /api/version</example>
+      <example name="list_workers">wm-api GET /api/workers/list</example>
+      <example name="list_workspaces">wm-api GET /api/workspaces/list</example>
+      <example name="run_python">wm-api POST /api/w/WORKSPACE/jobs/run/preview '{"content":"def main(): return 42","language":"python3","args":{}}'</example>
+      <example name="run_deno">wm-api POST /api/w/WORKSPACE/jobs/run/preview '{"content":"export async function main() { return 42; }","language":"deno","args":{}}'</example>
+      <example name="get_job_result">wm-api GET /api/w/WORKSPACE/jobs_u/completed/get_result/JOB_ID</example>
+    </examples>
+  </api>
+
+  <workers>
+    <count>4</count>
+    <group>default</group>
+    <supported_languages>
+      <lang>python3</lang>
+      <lang>deno</lang>
+      <lang>bun</lang>
+      <lang>bash</lang>
+      <lang>go</lang>
+      <lang>powershell</lang>
+      <lang>php</lang>
+      <lang>ruby</lang>
+      <lang>rust</lang>
+      <lang>ansible</lang>
+      <lang>csharp</lang>
+      <lang>java</lang>
+      <lang>nu</lang>
+    </supported_languages>
+  </workers>
+
+  <runtimes>
+    <runtime name="python" version="3.12.12" path="/home/lewis/.local/share/mise/installs/python/3.12.12/bin/python3"/>
+    <runtime name="deno" version="2.6.3" path="/home/lewis/.local/share/mise/installs/deno/2.6.3/bin/deno"/>
+    <runtime name="bun" version="1.3.5" path="/home/lewis/.local/share/mise/installs/bun/1.3.5/bin/bun"/>
+    <runtime name="go" version="1.25.5" path="/home/lewis/.local/share/mise/installs/go/1.25.5/bin/go"/>
+    <runtime name="node" version="25.2.1" path="/home/lewis/.local/share/mise/installs/node/25.2.1/bin/node"/>
+  </runtimes>
+
+  <database>
+    <type>PostgreSQL</type>
+    <host>localhost</host>
+    <port>5432</port>
+    <name>windmill</name>
+    <user>windmill</user>
+    <password_location>pass windmill/db-password</password_location>
+  </database>
+
+  <files>
+    <binary>/home/lewis/windmill</binary>
+    <start_script>/home/lewis/.local/bin/windmill-start</start_script>
+    <api_helper>/home/lewis/.local/bin/wm-api</api_helper>
+    <env_config>/home/lewis/.config/windmill/windmill.env</env_config>
+    <systemd_service>~/.config/systemd/user/windmill.service</systemd_service>
+  </files>
+
+  <secrets>
+    <store>pass (GPG encrypted)</store>
+    <entries>
+      <entry name="api-token" path="windmill/api-token" purpose="API authentication"/>
+      <entry name="db-password" path="windmill/db-password" purpose="DATABASE_URL construction"/>
+    </entries>
+  </secrets>
+
+  <service_commands>
+    <command name="status">systemctl --user status windmill</command>
+    <command name="start">systemctl --user start windmill</command>
+    <command name="stop">systemctl --user stop windmill</command>
+    <command name="restart">systemctl --user restart windmill</command>
+    <command name="logs">journalctl --user -u windmill -f</command>
+  </service_commands>
+
+  <workspaces>
+    <workspace id="test" name="Test Workspace" created="true"/>
+  </workspaces>
+
+  <security>
+    <nsjail>disabled</nsjail>
+    <secrets_storage>pass (GPG)</secrets_storage>
+    <no_plaintext_secrets>true</no_plaintext_secrets>
+  </security>
+</windmill>
