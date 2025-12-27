@@ -1,9 +1,10 @@
-summary: ''
 description: ''
-lock: '!inline f/fire-flow/generate/script.script.lock'
 kind: script
+lock: '!inline f/fire-flow/generate/script.script.lock'
+path: f/fire-flow/generate
 schema:
-  $schema: 'https://json-schema.org/draft/2020-12/schema'
-  type: object
+  $schema: https://json-schema.org/draft/2020-12/schema
   properties: {}
   required: []
+  type: object
+summary: ''

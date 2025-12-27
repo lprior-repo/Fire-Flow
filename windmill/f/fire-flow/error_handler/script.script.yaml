@@ -1,15 +1,16 @@
-summary: Error handler for contract loop
 description: Captures error context for debugging/alerting
+path: f/fire-flow/error_handler
 schema:
-  $schema: "https://json-schema.org/draft/2020-12/schema"
-  type: object
+  $schema: https://json-schema.org/draft/2020-12/schema
   properties:
     error:
-      type: object
       description: The error from the failed step
-    failed_step:
-      type: string
-      description: Name of the step that failed
-    flow_input:
       type: object
+    failed_step:
+      description: Name of the step that failed
+      type: string
+    flow_input:
       description: Original flow inputs for context
+      type: object
+  type: object
+summary: Error handler for contract loop
